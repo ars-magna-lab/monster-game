@@ -1,10 +1,10 @@
 # Mega Monstruos
 
-Carreras de monster trucks en 3D para el navegador, al estilo de los juegos de karts. Uso privado.
+Carreras de monster trucks en 3D para el navegador, al estilo de los juegos de karts.
 
 ## Jugar
 
-Abre `index.html` en el navegador (doble clic o `xdg-open index.html`). No hace falta servidor:
+Juega en línea en la dirección publicada (GitHub Pages) o abre `index.html` en el navegador (doble clic o `xdg-open index.html`). No hace falta servidor:
 el juego ya compilado está en `dist/game.js`.
 
 Controles:
