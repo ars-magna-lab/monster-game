@@ -116,7 +116,7 @@ export class FX {
 
   update(dt) { this.soft.update(dt); this.glow.update(dt); }
 
-  dust(x, y, z, vx, vz, color = [0.62, 0.48, 0.34], n = 1, size = 2.2) {
+  dust(x, y, z, vx, vz, color = this.dustColor || [0.62, 0.48, 0.34], n = 1, size = 2.2) {
     for (let i = 0; i < n; i++) {
       this.soft.emit({
         x: x + (Math.random() - 0.5) * 1.2, y: y + 0.3, z: z + (Math.random() - 0.5) * 1.2,

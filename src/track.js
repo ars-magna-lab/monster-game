@@ -8,25 +8,6 @@ export const CAR_HALF_W = 1.4;
 
 const DEG = Math.PI / 180;
 
-// Recorrido "tortuga": rectas (len) y curvas (ang en grados, + = derecha).
-// Las dos rectas marcadas con solve se calculan para que el circuito cierre.
-function layout() {
-  return [
-    { type: 'S', len: 230 },               // 0  recta de meta: turbos, coches para aplastar
-    { type: 'A', ang: 90, r: 70 },         // 1
-    { type: 'S', len: 330 },               // 2  troncos y el gran foso
-    { type: 'A', ang: 90, r: 65 },         // 3
-    { type: 'A', ang: -35, r: 60 },        // 4  chicane con bola de demolición
-    { type: 'A', ang: 70, r: 60 },         // 5
-    { type: 'A', ang: -35, r: 60 },        // 6
-    { type: 'S', len: 290 },               // 7  túnel
-    { type: 'A', ang: 90, r: 70 },         // 8
-    { type: 'S', len: 0, solve: 'X' },     // 9  barro, baches y foso de cocodrilos
-    { type: 'A', ang: 90, r: 65 },         // 10
-    { type: 'S', len: 0, solve: 'Y' },     // 11 la red y recta final
-  ];
-}
-
 const rightOf = (th) => [-Math.sin(th), Math.cos(th)];
 
 function walk(segs) {
@@ -54,8 +35,8 @@ function walk(segs) {
   return { s, x, z, th };
 }
 
-function solveLayout() {
-  const segs = layout();
+function solveLayout(layout) {
+  const segs = layout.map((g) => ({ ...g }));
   const end0 = walk(segs);
   const gx = segs.find((g) => g.solve === 'X');
   const gy = segs.find((g) => g.solve === 'Y');
@@ -79,8 +60,10 @@ const smooth = (a, b, x) => {
 };
 
 export class Track {
-  constructor() {
-    const { segs, length } = solveLayout();
+  constructor(circuit) {
+    this.circuit = circuit;
+    this.theme = circuit.theme;
+    const { segs, length } = solveLayout(circuit.layout);
     this.segs = segs;
     this.length = length;
     this.N = Math.round(length);
@@ -128,41 +111,14 @@ export class Track {
   }
 
   buildFeatures() {
-    const A = (k, rel) => this.at(k, rel);
-
-    // Mesetas elevadas donde están los fosos (subida, llano, bajada)
-    this.plateaus = [
-      { a: A(2, 115), b: A(2, 160), c: A(2, 270), d: A(2, 315), h: 5 },
-      { a: A(9, 130), b: A(9, 172), c: A(9, 275), d: A(9, 318), h: 4.5 },
-    ];
-    // Baches seguidos (whoops) para que los camiones boten
-    this.whoops = [{ a: A(9, 65), b: A(9, 65) + 6 * 9, amp: 0.75, wl: 9 }];
-
-    // Rampas: suben linealmente de s0 a s1 en el rango lateral [d0, d1]
-    this.ramps = [
-      { s0: A(2, 180), s1: A(2, 196), d0: -LIMIT, d1: LIMIT, h: 3.5 },
-      { s0: A(9, 190), s1: A(9, 206), d0: -LIMIT, d1: 3, h: 3.5 },
-    ];
-
-    // Fosos. El de cocodrilos tiene agua y un puente estrecho en el lado derecho.
-    this.pits = [
-      { name: 'foso', s0: A(2, 196), s1: A(2, 214), floor: 0, water: false },
-      { name: 'cocodrilos', s0: A(9, 206), s1: A(9, 228), floor: 1.4, water: true, bridge: [6.5, 11.5] },
-    ];
+    const f = this.circuit.features((k, rel) => this.at(k, rel), LIMIT);
+    Object.assign(this, f);
     for (const p of this.pits) {
+      p.water = !!p.liquid; // se cae dentro de algo (agua, hielo o lava)
       p.top = this.baseAt((p.s0 + p.s1) / 2);
       p.respawnS = p.s1 + 10;
     }
-
-    // Charcos de barro (elipses en coordenadas de pista)
-    this.mud = [
-      { s: A(9, 18), d: -5, rs: 9, rd: 5 },
-      { s: A(9, 34), d: 4, rs: 10, rd: 6 },
-      { s: A(9, 52), d: -2, rs: 8, rd: 5.5 },
-    ];
-
-    this.tunnel = { s0: A(7, 30), s1: A(7, 250) };
-
+    this.patchKind = this.theme.patch || 'mud';
     this.startLine = 0;
   }
 
@@ -202,7 +158,7 @@ export class Track {
         let ds = s - m.s;
         if (ds > this.length / 2) ds -= this.length;
         const q = (ds / m.rs) ** 2 + ((d - m.d) / m.rd) ** 2;
-        if (q < 1) { type = 'mud'; break; }
+        if (q < 1) { type = this.patchKind === 'mud' ? 'mud' : 'ice'; break; }
       }
     }
     return { h, type };

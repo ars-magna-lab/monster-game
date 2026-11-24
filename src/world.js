@@ -17,12 +17,35 @@ function rng(seed) {
   };
 }
 
+// Fachada con ventanas para los edificios de la ciudad
+let windowTex = null;
+function buildingTex() {
+  if (windowTex) return windowTex;
+  const c = document.createElement('canvas');
+  c.width = 64; c.height = 128;
+  const g = c.getContext('2d');
+  g.fillStyle = '#ffffff'; g.fillRect(0, 0, 64, 128);
+  const r = rng(77);
+  for (let y = 6; y < 128; y += 16) {
+    for (let x = 5; x < 64; x += 15) {
+      const lit = r() < 0.35;
+      g.fillStyle = lit ? '#ffe9a8' : '#2c3a4a';
+      g.fillRect(x, y, 9, 10);
+    }
+  }
+  windowTex = new THREE.CanvasTexture(c);
+  windowTex.colorSpace = THREE.SRGBColorSpace;
+  windowTex.wrapS = windowTex.wrapT = THREE.RepeatWrapping;
+  return windowTex;
+}
+
 export function buildWorld(scene, track) {
   const r = rng(42);
-  const SKY_TOP = new THREE.Color(0x3d8fe0);
-  const SKY_HORIZON = new THREE.Color(0xcfe6f5);
+  const TH = track.theme;
+  const SKY_TOP = new THREE.Color(TH.sky[0]);
+  const SKY_HORIZON = new THREE.Color(TH.sky[1]);
   scene.background = SKY_HORIZON.clone();
-  scene.fog = new THREE.Fog(0xcfe6f5, 260, 1300);
+  scene.fog = new THREE.Fog(TH.fog[0], TH.fog[1], TH.fog[2]);
 
   // cielo con degradado
   const sky = new THREE.Mesh(
@@ -41,9 +64,9 @@ export function buildWorld(scene, track) {
   scene.add(sky);
 
   // luces
-  const hemi = new THREE.HemisphereLight(0xcfe8ff, 0x6b5a3a, 1.0);
+  const hemi = new THREE.HemisphereLight(TH.hemi[0], TH.hemi[1], TH.hemi[2]);
   scene.add(hemi);
-  const sun = new THREE.DirectionalLight(0xfff1d6, 2.6);
+  const sun = new THREE.DirectionalLight(TH.sun[0], TH.sun[1]);
   sun.position.set(120, 160, 70);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
@@ -77,25 +100,62 @@ export function buildWorld(scene, track) {
   let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
   for (const [x, z] of pts) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z); }
   const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2;
-  const tunnelMid = track.pointAt((track.tunnel.s0 + track.tunnel.s1) / 2);
-  const nearTunnel = (x, z) => {
-    const a = track.pointAt(track.tunnel.s0), b = track.pointAt(track.tunnel.s1);
-    const xmin = Math.min(a.x, b.x) - 10, xmax = Math.max(a.x, b.x) + 10;
-    return x > xmin && x < xmax && Math.abs(z - tunnelMid.z) < 85;
-  };
+  // cerca de la montaña del túnel no se pone nada
+  const tunPts = [];
+  for (let s = track.tunnel.s0 - 10; s <= track.tunnel.s1 + 10; s += 8) { const P = track.pointAt(s); tunPts.push([P.x, P.z]); }
+  const nearTunnel = (x, z) => tunPts.some(([px, pz]) => (x - px) ** 2 + (z - pz) ** 2 < 82 * 82);
 
-  // montañas lejanas
-  const mGeos = [];
-  for (let i = 0; i < 40; i++) {
-    const a = (i / 40) * Math.PI * 2 + r() * 0.1;
-    const dist = 950 + r() * 350;
-    const h = 120 + r() * 220;
-    const g = new THREE.ConeGeometry(140 + r() * 160, h, 7, 1);
-    g.translate(cx + Math.cos(a) * dist, h / 2 - 5, cz + Math.sin(a) * dist);
-    mGeos.push(g);
+  // montañas lejanas (en la ciudad, rascacielos en el horizonte)
+  if (TH.mountains !== null) {
+    const mGeos = [];
+    for (let i = 0; i < 40; i++) {
+      const a = (i / 40) * Math.PI * 2 + r() * 0.1;
+      const dist = 950 + r() * 350;
+      const h = 120 + r() * 220;
+      const g = new THREE.ConeGeometry(140 + r() * 160, h, 7, 1);
+      g.translate(cx + Math.cos(a) * dist, h / 2 - 5, cz + Math.sin(a) * dist);
+      mGeos.push(g);
+    }
+    const mountains = new THREE.Mesh(mergeGeometries(mGeos), new THREE.MeshStandardMaterial({ color: TH.mountains, flatShading: true, roughness: 1 }));
+    scene.add(mountains);
   }
-  const mountains = new THREE.Mesh(mergeGeometries(mGeos), new THREE.MeshStandardMaterial({ color: 0x7c8f9c, flatShading: true, roughness: 1 }));
-  scene.add(mountains);
+  if (TH.volcano) {
+    // el gran volcán, con lava en el cráter y en las laderas
+    const vx = cx + 700, vz = cz - 500;
+    const cone = new THREE.CylinderGeometry(70, 330, 380, 14, 1, true);
+    cone.translate(vx, 185, vz);
+    scene.add(new THREE.Mesh(cone, new THREE.MeshStandardMaterial({ color: 0x2e2826, flatShading: true, roughness: 1 })));
+    const lavaMat = new THREE.MeshBasicMaterial({ color: 0xff5a10, fog: false });
+    const crater = new THREE.Mesh(new THREE.CircleGeometry(68, 14).rotateX(-Math.PI / 2), lavaMat);
+    crater.position.set(vx, 372, vz);
+    scene.add(crater);
+    const flows = [];
+    for (let i = 0; i < 6; i++) {
+      const a = -Math.PI / 2 - 0.9 + i * 0.36 + r() * 0.1;
+      const g = new THREE.BoxGeometry(10 + r() * 8, 330, 2);
+      g.translate(0, -165, 0);
+      g.rotateX(0.82);
+      g.rotateY(-a + Math.PI / 2);
+      g.translate(vx + Math.cos(a) * 72, 370, vz + Math.sin(a) * 72);
+      flows.push(g);
+    }
+    scene.add(new THREE.Mesh(mergeGeometries(flows), lavaMat));
+  }
+  if (TH.city) {
+    // rascacielos lejanos
+    const bGeos = [];
+    for (let i = 0; i < 90; i++) {
+      const a = r() * Math.PI * 2, dist = 650 + r() * 500;
+      const w = 30 + r() * 50, h = 60 + r() * 260;
+      const g = new THREE.BoxGeometry(w, h, w * (0.6 + r() * 0.6));
+      g.translate(cx + Math.cos(a) * dist, h / 2, cz + Math.sin(a) * dist);
+      bGeos.push(g);
+    }
+    const tex = buildingTex().clone();
+    tex.needsUpdate = true;
+    tex.repeat.set(3, 8);
+    scene.add(new THREE.Mesh(mergeGeometries(bGeos), new THREE.MeshStandardMaterial({ map: tex, color: 0x8fa3b8, roughness: 0.7 })));
+  }
 
   // colinas cercanas
   const hGeos = [];
@@ -109,47 +169,116 @@ export function buildWorld(scene, track) {
     g.translate(x, -2, z);
     hGeos.push(g);
   }
-  if (hGeos.length) {
-    const hills = new THREE.Mesh(mergeGeometries(hGeos), new THREE.MeshStandardMaterial({ color: 0x6f9a45, flatShading: true, roughness: 1 }));
+  if (hGeos.length && TH.hills !== null) {
+    const hills = new THREE.Mesh(mergeGeometries(hGeos), new THREE.MeshStandardMaterial({ color: TH.hills, flatShading: true, roughness: 1 }));
     hills.receiveShadow = true;
     scene.add(hills);
   }
 
-  // árboles (instanciados)
-  const trunkGeo = new THREE.CylinderGeometry(0.4, 0.6, 3, 6); trunkGeo.translate(0, 1.5, 0);
-  const pineGeo = new THREE.ConeGeometry(3.2, 9, 7); pineGeo.translate(0, 7, 0);
-  const roundGeo = new THREE.IcosahedronGeometry(3.4, 0); roundGeo.translate(0, 5.6, 0);
-  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5a3b22, roughness: 1 });
-  const pineMat = new THREE.MeshStandardMaterial({ color: 0x2f6b34, roughness: 1, flatShading: true });
-  const roundMat = new THREE.MeshStandardMaterial({ color: 0x4f8f3a, roughness: 1, flatShading: true });
+  // árboles (instanciados), según el tema
+  const kind = TH.trees;
+  const m4 = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const want = { mixed: 650, snowpine: 650, dead: 260, jungle: 900, park: 140 }[kind] || 400;
   const spots = [];
   let tries = 0;
-  while (spots.length < 650 && tries < 20000) {
+  while (spots.length < want && tries < 25000) {
     tries++;
     const x = cx + (r() - 0.5) * 1300, z = cz + (r() - 0.5) * 1200;
     const dt = distTrack(x, z);
-    if (dt < LIMIT + 18 || nearTunnel(x, z)) continue;
+    if (dt < LIMIT + (kind === 'jungle' ? 10 : 18) || nearTunnel(x, z)) continue;
+    if (TH.city && dt > 120) continue; // en la ciudad, solo árboles en las aceras y parques cercanos
     if (Math.abs(z) < 75 && x > -120 && x < 140) continue; // gradas
-    spots.push([x, z, 0.7 + r() * 0.8, r() < 0.55]);
+    spots.push([x, z, 0.7 + r() * 0.8, r()]);
   }
-  const m4 = new THREE.Matrix4();
-  const q = new THREE.Quaternion();
-  const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, spots.length);
-  const pines = new THREE.InstancedMesh(pineGeo, pineMat, spots.filter((s) => s[3]).length);
-  const rounds = new THREE.InstancedMesh(roundGeo, roundMat, spots.filter((s) => !s[3]).length);
-  let ip = 0, ir = 0;
-  spots.forEach(([x, z, s, pine], i) => {
-    q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), r() * 6);
-    m4.compose(new THREE.Vector3(x, 0, z), q, new THREE.Vector3(s, s, s));
-    trunks.setMatrixAt(i, m4);
-    if (pine) pines.setMatrixAt(ip++, m4); else rounds.setMatrixAt(ir++, m4);
-  });
-  for (const m of [trunks, pines, rounds]) { m.castShadow = true; m.receiveShadow = true; scene.add(m); }
+  const addInst = (geo, mat, list, yScale = 1) => {
+    if (!list.length) return;
+    const im = new THREE.InstancedMesh(geo, mat, list.length);
+    list.forEach(([x, z, sc], i) => {
+      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), (x * 7.3 + z * 3.1) % 6.28);
+      m4.compose(new THREE.Vector3(x, 0, z), q, new THREE.Vector3(sc, sc * yScale, sc));
+      im.setMatrixAt(i, m4);
+    });
+    im.castShadow = true; im.receiveShadow = true;
+    scene.add(im);
+  };
+  const trunkGeo = new THREE.CylinderGeometry(0.4, 0.6, 3, 6); trunkGeo.translate(0, 1.5, 0);
+  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5a3b22, roughness: 1 });
+  const pineGeo = new THREE.ConeGeometry(3.2, 9, 7); pineGeo.translate(0, 7, 0);
+  const roundGeo = new THREE.IcosahedronGeometry(3.4, 0); roundGeo.translate(0, 5.6, 0);
+  if (kind === 'mixed' || kind === 'park') {
+    const pines = spots.filter((p) => p[3] < (kind === 'park' ? 0 : 0.55));
+    const rounds = spots.filter((p) => p[3] >= (kind === 'park' ? 0 : 0.55));
+    addInst(trunkGeo, trunkMat, spots);
+    addInst(pineGeo, new THREE.MeshStandardMaterial({ color: 0x2f6b34, roughness: 1, flatShading: true }), pines);
+    addInst(roundGeo, new THREE.MeshStandardMaterial({ color: 0x4f8f3a, roughness: 1, flatShading: true }), rounds);
+  } else if (kind === 'snowpine') {
+    addInst(trunkGeo, trunkMat, spots);
+    addInst(pineGeo, new THREE.MeshStandardMaterial({ color: 0x2c5a40, roughness: 1, flatShading: true }), spots);
+    const cap = new THREE.ConeGeometry(2.1, 4.6, 7); cap.translate(0, 9.6, 0);
+    addInst(cap, new THREE.MeshStandardMaterial({ color: 0xf4f8fc, roughness: 0.9, flatShading: true }), spots);
+  } else if (kind === 'dead') {
+    // árboles quemados: tronco y ramas desnudas
+    const parts = [];
+    const t = new THREE.CylinderGeometry(0.25, 0.55, 8, 5); t.translate(0, 4, 0); parts.push(t);
+    for (const [y, a, l] of [[4.5, 0.9, 3], [6, -0.8, 2.5], [3.2, -1.1, 2.2]]) {
+      const b = new THREE.CylinderGeometry(0.1, 0.2, l, 4);
+      b.translate(0, l / 2, 0); b.rotateZ(a); b.translate(0, y, 0);
+      parts.push(b);
+    }
+    addInst(mergeGeometries(parts), new THREE.MeshStandardMaterial({ color: 0x1e1a18, roughness: 1, flatShading: true }), spots);
+  } else if (kind === 'jungle') {
+    // palmeras y árboles grandes de copa ancha
+    const palms = spots.filter((p) => p[3] < 0.45), big = spots.filter((p) => p[3] >= 0.45);
+    const pt = new THREE.CylinderGeometry(0.3, 0.5, 11, 6); pt.translate(0, 5.5, 0);
+    addInst(pt, new THREE.MeshStandardMaterial({ color: 0x7a5a3a, roughness: 1 }), palms);
+    const leaves = [];
+    for (let i = 0; i < 7; i++) {
+      const l = new THREE.BoxGeometry(0.9, 0.15, 5.5);
+      l.translate(0, 0, 2.6); l.rotateX(0.35); l.rotateY((i / 7) * Math.PI * 2);
+      l.translate(0, 11, 0);
+      leaves.push(l);
+    }
+    addInst(mergeGeometries(leaves), new THREE.MeshStandardMaterial({ color: 0x2f8a2a, roughness: 1, flatShading: true }), palms);
+    const bt = new THREE.CylinderGeometry(0.6, 1.0, 7, 6); bt.translate(0, 3.5, 0);
+    addInst(bt, trunkMat, big);
+    const crown = new THREE.IcosahedronGeometry(5, 0); crown.scale(1.3, 0.75, 1.3); crown.translate(0, 9, 0);
+    addInst(crown, new THREE.MeshStandardMaterial({ color: 0x24692a, roughness: 1, flatShading: true }), big);
+  }
+
+  // edificios de la ciudad junto a la pista
+  if (TH.city) {
+    const spotsB = [];
+    let tr2 = 0;
+    while (spotsB.length < 220 && tr2 < 30000) {
+      tr2++;
+      const x = cx + (r() - 0.5) * 1100, z = cz + (r() - 0.5) * 1000;
+      const dt = distTrack(x, z);
+      if (dt < LIMIT + 40 || nearTunnel(x, z)) continue;
+      if (Math.abs(z) < 90 && x > -140 && x < 160) continue;
+      spotsB.push([x, z]);
+    }
+    const geo = new THREE.BoxGeometry(1, 1, 1); geo.translate(0, 0.5, 0);
+    const cols = [0xb8c4d0, 0xd8c8b0, 0x9fb0a8, 0xc8a898, 0xa8b8d8, 0xe0d8c8];
+    const tex = buildingTex();
+    const im = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8 }), spotsB.length);
+    const c = new THREE.Color();
+    spotsB.forEach(([x, z], i) => {
+      const w = 18 + r() * 22, d = 18 + r() * 22, h = 20 + r() * 70;
+      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), r() * 0.3);
+      m4.compose(new THREE.Vector3(x, 0, z), q, new THREE.Vector3(w, h, d));
+      im.setMatrixAt(i, m4);
+      im.setColorAt(i, c.setHex(cols[i % cols.length]));
+    });
+    im.castShadow = true; im.receiveShadow = true;
+    scene.add(im);
+  }
 
   // rocas
   const rockGeo = new THREE.DodecahedronGeometry(1.6, 0);
-  const rocks = new THREE.InstancedMesh(rockGeo, new THREE.MeshStandardMaterial({ color: 0x8a847a, flatShading: true, roughness: 1 }), 160);
-  for (let i = 0; i < 160; i++) {
+  const nRocks = TH.rocks === null ? 0 : TH.trees === 'dead' ? 360 : 160;
+  const rocks = new THREE.InstancedMesh(rockGeo, new THREE.MeshStandardMaterial({ color: TH.rocks ?? 0x8a847a, flatShading: true, roughness: 1 }), nRocks);
+  for (let i = 0; i < nRocks; i++) {
     let x, z;
     do { x = cx + (r() - 0.5) * 1100; z = cz + (r() - 0.5) * 1000; } while (distTrack(x, z) < LIMIT + 6 || nearTunnel(x, z));
     const s = 0.5 + r() * 1.6;
@@ -254,7 +383,8 @@ export function buildWorld(scene, track) {
       cloudGeos.push(g);
     }
   }
-  const clouds = new THREE.Mesh(mergeGeometries(cloudGeos), new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xbfd6ea, emissiveIntensity: 0.55, flatShading: true, roughness: 1, fog: false }));
+  const cloudCol = TH.volcano ? [0x3a3434, 0x6a3a2a] : [0xffffff, 0xbfd6ea];
+  const clouds = new THREE.Mesh(mergeGeometries(cloudGeos), new THREE.MeshStandardMaterial({ color: cloudCol[0], emissive: cloudCol[1], emissiveIntensity: 0.55, flatShading: true, roughness: 1, fog: false }));
   scene.add(clouds);
 
   // dirigible publicitario sobrevolando la recta

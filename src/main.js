@@ -13,7 +13,8 @@ import { FX } from './particles.js';
 import { Sound } from './audio.js';
 import { Input } from './input.js';
 import { HUD, fmtTime } from './hud.js';
-import { setAnisotropy, checkerTex, softDotTex } from './textures.js';
+import { setAnisotropy, checkerTex, softDotTex, setTexTheme } from './textures.js';
+import { CIRCUITS, circuitById, pitText } from './circuits.js';
 import { renderSong } from './music.js';
 import { setCheapMaterials } from './optimize.js';
 
@@ -118,49 +119,19 @@ class Game {
     this.renderer = makeRenderer($('game'));
     setAnisotropy(Math.min(8, this.renderer.capabilities.getMaxAnisotropy()));
 
-    this.scene = new THREE.Scene();
     this.envMap = new THREE.PMREMGenerator(this.renderer).fromScene(new RoomEnvironment(), 0.04).texture;
-    this.scene.environment = this.envMap;
-    this.scene.environmentIntensity = 0.45;
     this.camera = new THREE.PerspectiveCamera(68, 1, 0.5, 4000); // cámara de la portada
-    this.track = new Track();
-    this.trackMeshes = buildTrackMeshes(this.track, this.scene);
-    this.world = buildWorld(this.scene, this.track);
-    this.fx = new FX(this.scene);
     this.sound = new Sound();
     this.input = new Input();
-    this.obstacles = new Obstacles(this.track, this.scene, this);
-    this.projectiles = new Projectiles(this.scene, this);
-    this.vehicles = TRUCKS.map((def) => new Vehicle(def, this.track));
-    for (const v of this.vehicles) this.scene.add(v.mesh);
-    // sombra redonda bajo cada camión (cuando las sombras de verdad están apagadas)
-    const blobGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
-    const blobMat = new THREE.MeshBasicMaterial({ map: softDotTex(), color: 0x000000, transparent: true, opacity: 0.55, depthWrite: false });
-    this.blobs = this.vehicles.map(() => { const m = new THREE.Mesh(blobGeo, blobMat.clone()); m.renderOrder = 1; m.visible = false; this.scene.add(m); return m; });
+    this.vehicles = TRUCKS.map((def) => new Vehicle(def, null));
 
-    // luces del túnel: faros del jugador y luz que "pasa" bajo las lámparas
-    this.headlight = new THREE.SpotLight(0xfff4d0, 0, 90, 0.55, 0.5, 1.2);
-    this.scene.add(this.headlight, this.headlight.target);
-    this.tunnelLight = new THREE.PointLight(0xffe2a0, 0, 45, 1.4);
-    this.scene.add(this.tunnelLight);
-    this.flash = new THREE.PointLight(0xffa040, 0, 60, 1.5);
-    this.scene.add(this.flash);
-
-    this.rings = [];
-    for (let i = 0; i < 4; i++) {
-      const m = new THREE.Mesh(new THREE.TorusGeometry(1, 0.35, 8, 40), new THREE.MeshBasicMaterial({ color: 0xff4fd8, transparent: true, opacity: 0, depthWrite: false }));
-      m.rotation.x = Math.PI / 2;
-      m.visible = false;
-      this.scene.add(m);
-      this.rings.push({ mesh: m, t: 1 });
-    }
-
-    this.settings = loadJSON('megamonstruos.ajustes', { truck: 0, truck2: 1, laps: 3, diff: 'normal', music: true, mode: 1, split: 'auto', quality: 'auto' });
+    this.settings = loadJSON('megamonstruos.ajustes', { truck: 0, truck2: 1, laps: 3, diff: 'normal', music: true, mode: 1, split: 'auto', quality: 'auto', circuit: 'clasico' });
     if (this.settings.truck2 === this.settings.truck) this.settings.truck2 = (this.settings.truck + 1) % TRUCKS.length;
     this.records = loadJSON('megamonstruos.records', {});
     this.sound.musicOn = this.settings.music;
     this.laps = this.settings.laps;
     this.perf = { acc: 0, n: 0, fps: 60, scale: 1, shadows: -1 };
+    this.loadCircuit(this.settings.circuit);
     this.applyQuality(true);
     this.views = [];
     this.humans = [];
@@ -191,6 +162,90 @@ class Game {
     requestAnimationFrame((t) => this.loop(t));
   }
 
+  // Construye (o reconstruye) todo lo que depende del circuito
+  loadCircuit(id) {
+    const c = circuitById(id);
+    if (this.circuit === c) return;
+    this.circuit = c;
+    if (this.scene) {
+      this.projectiles.clear();
+      this.scene.traverse((o) => {
+        if (o.geometry && !o.userData.keep) o.geometry.dispose();
+      });
+      for (const v of this.vehicles) this.scene.remove(v.mesh);
+    }
+    setTexTheme(c.theme.tex);
+    const scene = (this.scene = new THREE.Scene());
+    scene.environment = this.envMap;
+    scene.environmentIntensity = c.theme.volcano ? 0.3 : 0.45;
+    this.track = new Track(c);
+    this.trackMeshes = buildTrackMeshes(this.track, scene);
+    this.world = buildWorld(scene, this.track);
+    this.fx = new FX(scene);
+    this.fx.dustColor = c.theme.dust;
+    this.obstacles = new Obstacles(this.track, scene, this);
+    this.projectiles = new Projectiles(scene, this);
+    for (const v of this.vehicles) { v.track = this.track; scene.add(v.mesh); }
+    // sombra redonda bajo cada camión (cuando las sombras de verdad están apagadas)
+    const blobGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+    const blobMat = new THREE.MeshBasicMaterial({ map: softDotTex(), color: 0x000000, transparent: true, opacity: 0.55, depthWrite: false });
+    this.blobs = this.vehicles.map(() => { const m = new THREE.Mesh(blobGeo, blobMat.clone()); m.renderOrder = 1; m.visible = false; scene.add(m); return m; });
+    // luces del túnel: faros del jugador y luz que "pasa" bajo las lámparas
+    this.headlight = new THREE.SpotLight(0xfff4d0, 0, 90, 0.55, 0.5, 1.2);
+    scene.add(this.headlight, this.headlight.target);
+    this.tunnelLight = new THREE.PointLight(c.theme.volcano ? 0xff7a30 : 0xffe2a0, 0, 45, 1.4);
+    scene.add(this.tunnelLight);
+    this.flash = new THREE.PointLight(0xffa040, 0, 60, 1.5);
+    scene.add(this.flash);
+    this.rings = [];
+    for (let i = 0; i < 4; i++) {
+      const m = new THREE.Mesh(new THREE.TorusGeometry(1, 0.35, 8, 40), new THREE.MeshBasicMaterial({ color: 0xff4fd8, transparent: true, opacity: 0, depthWrite: false }));
+      m.rotation.x = Math.PI / 2;
+      m.visible = false;
+      scene.add(m);
+      this.rings.push({ mesh: m, t: 1 });
+    }
+    // nieve que cae alrededor de la cámara
+    this.snowT = 0;
+    // calidad gráfica actual sobre la escena nueva
+    if (this.perf.shadows >= 0) {
+      const q = this.qualityLevel();
+      this.world.setShadowSize(this.perf.shadows === 2 ? 2048 : 1024);
+      setCheapMaterials(scene, !!q.cheap);
+    }
+    // los camiones vuelven a la parrilla del circuito nuevo
+    this.vehicles.forEach((v, i) => v.placeAt(this.track.wrap(-12 - i * 8), (i % 2 ? 5 : -5), 0));
+    this.views = this.views || [];
+  }
+
+  // Nieve que cae (Pico Helado) o ascuas que suben (volcán) alrededor de cada cámara
+  ambient(dt) {
+    const TH = this.track.theme;
+    if (!TH.snow && !TH.volcano) return;
+    const cams = this.views.length && this.state !== 'title' ? this.views.map((v) => v.camera) : [this.camera];
+    this.snowT += dt * (TH.snow ? 70 : 18) * (this.perf.shadows === 0 ? 0.6 : 1);
+    while (this.snowT >= 1) {
+      this.snowT -= 1;
+      for (const cam of cams) {
+        const p = cam.position;
+        const x = p.x + (Math.random() - 0.5) * 90, z = p.z + (Math.random() - 0.5) * 90;
+        if (TH.snow) {
+          this.fx.soft.emit({ x, y: p.y + 10 + Math.random() * 18, z, vx: 1.5, vy: -4, vz: 0.6, life: 6, size: 0.35, color: [1, 1, 1], alpha: 0.9, gravity: 0, drag: 0 });
+        } else {
+          this.fx.glow.emit({ x, y: p.y - 4 + Math.random() * 6, z, vx: (Math.random() - 0.5), vy: 2 + Math.random() * 2, vz: (Math.random() - 0.5), life: 3, size: 0.3, color: [1, 0.45, 0.1], alpha: 0.9, gravity: 0, drag: 0 });
+        }
+      }
+    }
+  }
+
+  recordKey(defId, laps) {
+    return (this.circuit.id === 'clasico' ? '' : this.circuit.id + '_') + defId + '_' + laps;
+  }
+
+  lapRecordKey() {
+    return this.circuit.id === 'clasico' ? 'vuelta' : 'vuelta_' + this.circuit.id;
+  }
+
   get player() { return this.humans[0]; }
 
   // ------------------------------------------------------------ UI
@@ -216,6 +271,14 @@ class Game {
     }));
     document.querySelectorAll('[data-diff]').forEach((b) => b.addEventListener('click', () => {
       this.sound.play('click'); this.settings.diff = b.dataset.diff; this.refreshOptions();
+    }));
+    $('circuit-opts').innerHTML = CIRCUITS.map((c) => `<button data-circuit="${c.id}">${c.short}</button>`).join('');
+    document.querySelectorAll('[data-circuit]').forEach((b) => b.addEventListener('click', () => {
+      this.sound.play('click');
+      this.settings.circuit = b.dataset.circuit;
+      this.loadCircuit(this.settings.circuit);
+      this.refreshOptions();
+      this.updateSelect();
     }));
     document.querySelectorAll('[data-quality]').forEach((b) => b.addEventListener('click', () => {
       this.sound.play('click'); this.settings.quality = b.dataset.quality; this.applyQuality(true); this.refreshOptions();
@@ -245,6 +308,8 @@ class Game {
     document.querySelectorAll('[data-laps]').forEach((b) => b.classList.toggle('sel', +b.dataset.laps === this.settings.laps));
     document.querySelectorAll('[data-diff]').forEach((b) => b.classList.toggle('sel', b.dataset.diff === this.settings.diff));
     document.querySelectorAll('[data-quality]').forEach((b) => b.classList.toggle('sel', b.dataset.quality === this.settings.quality));
+    document.querySelectorAll('[data-circuit]').forEach((b) => b.classList.toggle('sel', b.dataset.circuit === this.settings.circuit));
+    $('circuit-desc').textContent = `${this.circuit.name}: ${this.circuit.desc}`;
     const useWin = this.settings.split === 'window' && this.win2Ready();
     document.querySelectorAll('[data-split]').forEach((b) => b.classList.toggle('sel', (b.dataset.split === 'window') === useWin));
     const fileMode = location.protocol === 'file:';
@@ -347,7 +412,7 @@ class Game {
     const labels = { speed: 'Velocidad', accel: 'Aceleración', handling: 'Manejo', weight: 'Peso' };
     $('truck-stats').innerHTML = Object.entries(labels).map(([k, l]) =>
       `<div class="stat"><span>${l}</span><div class="bar">${[1, 2, 3, 4, 5].map((i) => `<i class="${i <= def.stats[k] ? 'on' : ''}"></i>`).join('')}</div></div>`).join('');
-    const rec = this.records[def.id + '_' + this.settings.laps];
+    const rec = this.records[this.recordKey(def.id, this.settings.laps)];
     $('truck-record').textContent = rec ? `Récord con ${this.settings.laps} ${this.settings.laps === 1 ? 'vuelta' : 'vueltas'}: ${fmtTime(rec)}` : '';
     $('truck-dots').innerHTML = TRUCKS.map((t, i) => {
       const taken = this.selectStep === 1 && i === this.settings.truck;
@@ -641,12 +706,13 @@ class Game {
     view.hud.big(p.finishPlace === 1 ? '¡GANASTE!' : `¡${ORDINAL[p.finishPlace - 1]}!`, 3, 'small');
     this.sound.play('finish');
     this.fx.confetti(p.x, p.y, p.z, 160);
-    const key = p.def.id + '_' + this.laps;
+    const key = this.recordKey(p.def.id, this.laps);
     p.newRecord = !this.records[key] || p.finishTime < this.records[key];
     if (p.newRecord) this.records[key] = p.finishTime;
     const best = p.lapTimes.length ? Math.min(...p.lapTimes) : Infinity;
-    p.newLapRecord = isFinite(best) && (!this.records.vuelta || best < this.records.vuelta);
-    if (p.newLapRecord) this.records.vuelta = best;
+    const lk = this.lapRecordKey();
+    p.newLapRecord = isFinite(best) && (!this.records[lk] || best < this.records[lk]);
+    if (p.newLapRecord) this.records[lk] = best;
     saveJSON('megamonstruos.records', this.records);
     if (this.humans.every((h) => h.finished)) this.endRace();
     else if (this.allDoneT === null) this.allDoneT = 45; // el otro jugador tiene 45 s para llegar
@@ -798,7 +864,10 @@ class Game {
           case 'net': near('net'); break;
           case 'crush': near('crunch', 0.9); shake(0.3); break;
           case 'fallPit': case 'fallWater': near('fall', 0.8); break;
-          case 'splash': near('splash'); this.fx.splash(v.x, v.y + 0.5, v.z); break;
+          case 'splash':
+            if (v.fall?.pit?.liquid === 'lava') { near('boom', 0.7); this.fx.explosion(v.x, v.y - 1, v.z); }
+            else { near('splash'); this.fx.splash(v.x, v.y + 0.5, v.z); }
+            break;
           case 'land':
             if (e.v > 9) {
               near('land', clamp(e.v / 18, 0.3, 1));
@@ -812,9 +881,10 @@ class Game {
           case 'scrape': near('scrape', clamp(e.v / 12, 0.2, 0.8)); this.fx.sparks(v.x, v.y + 1.2, v.z, 4); break;
           case 'wall': near('bump', 0.6); break;
         }
-        if (view && PLAYER_MSG[e.type]) {
+        const msg = e.type === 'fallWater' ? pitText(this.track.theme, e.liquid) : e.type === 'log' ? this.track.theme.rollerHit : PLAYER_MSG[e.type];
+        if (view && msg) {
           const big = ['fallPit', 'fallWater', 'net', 'ball', 'boom'].includes(e.type);
-          view.hud.message(PLAYER_MSG[e.type], big ? 1.6 : 1.0, big ? 'warn' : '');
+          view.hud.message(msg, big ? 1.6 : 1.0, big ? 'warn' : '');
         }
       }
       v.events.length = 0;
@@ -955,6 +1025,7 @@ class Game {
 
     this.updateRings(dt);
     this.flash.intensity *= Math.exp(-dt * 8);
+    this.ambient(dt);
     this.fx.update(dt);
     this.world.update(dt);
     for (const pit of this.track.pits) if (pit.waterMesh) pit.waterMesh.material.map.offset.y += dt * 0.03;

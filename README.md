@@ -50,6 +50,13 @@ Pantalla:
 
 ## Qué hay
 
+- Cinco circuitos, que se eligen en la pantalla del camión:
+  - **Valle Monstruo**: el original, con fosos, troncos y cocodrilos.
+  - **Pico Helado**: placas de hielo que patinan, bolas de nieve gigantes, muñecos de nieve y agua helada.
+  - **Volcán Rugiente**: fosos de lava, rocas rodantes y ceniza.
+  - **Selva Salvaje**: mucho barro, troncos, palmeras y un río con cocodrilos.
+  - **Gran Ciudad**: asfalto, rascacielos, manchas de aceite, tuberías rodantes y una avenida llena de coches.
+
 - Seis camiones con forma, tamaño y estadísticas distintas: Trituradora, Megalodón, Escorpión, Mamut
   (el más grande), Relámpago (el más pequeño) y Dragón.
 - Cuenta atrás con semáforo, cinco rivales controlados por el ordenador y 1, 3 o 5 vueltas.
@@ -69,11 +76,12 @@ npm run build     # compila src/ en dist/game.js
 npm run dev       # recompila al guardar
 npm test          # prueba de humo (también: node tools/smoke.mjs dos|teclado|carrera) en Chrome sin interfaz (capturas en shots/ y carrera simulada)
 node tools/shot.mjs salida.png "g.startRace()" 2000   # captura de depuración
+node tools/circuits.mjs [nieve ...]                    # una vuelta simulada y captura de cada circuito
 node tools/music.mjs race 30 race.wav [drums,bass]     # renderiza la música (opcional: instrumentos a silenciar)
 ```
 
 Añade `?auto` a la URL para que el ordenador conduzca tu camión (sirve de demostración).
 
-Código en `src/`: `track.js` (trazado y alturas), `trackMesh.js` (mallas de la pista), `trucks.js`
+Código en `src/`: `circuits.js` (trazado, obstáculos y aspecto de cada circuito), `track.js` (geometría y alturas), `trackMesh.js` (mallas de la pista), `trucks.js`
 (camiones), `vehicle.js` (física), `ai.js` (rivales), `obstacles.js`, `projectiles.js` (objetos que se lanzan), `world.js` (escenario),
 `hud.js`, `audio.js` (sonido sintetizado), `music.js` (canciones), `optimize.js` (trucos de rendimiento), `main.js` (estados del juego y cámara).

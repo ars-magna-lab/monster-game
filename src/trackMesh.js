@@ -4,6 +4,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { ROAD_HALF, LIMIT } from './track.js';
 import * as T from './textures.js';
 import { splitBigMeshes } from './optimize.js';
+import { pitText } from './circuits.js';
 
 // Cinta genérica a lo largo de la pista.
 // rows: valores de s; profile(s) -> [[d, y], ...]; uv(s, k, d, y) -> [u, v]
@@ -138,11 +139,22 @@ export function buildTrackMeshes(track, scene) {
     floor.receiveShadow = true;
     group.add(floor);
     if (p.water) {
+      const lava = p.liquid === 'lava', ice = p.liquid === 'ice';
       const wt = T.waterTex();
+      const mat = lava
+        ? new THREE.MeshStandardMaterial({ map: wt, color: 0xff8a30, emissive: 0xff4a00, emissiveMap: wt, emissiveIntensity: 1.4, roughness: 0.6 })
+        : new THREE.MeshStandardMaterial({ map: wt, color: ice ? 0xcfe8f6 : 0x5fa08a, roughness: ice ? 0.3 : 0.15, metalness: 0.1, transparent: true, opacity: ice ? 0.93 : 0.88 });
       const water = new THREE.Mesh(
         strip(track, rows, () => [[-LIMIT, p.floor], [LIMIT, p.floor]], (s, k, d) => [d / 10, s / 10]),
-        new THREE.MeshStandardMaterial({ map: wt, color: 0x5fa08a, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.88 }),
+        mat,
       );
+      if (lava) {
+        // resplandor de la lava
+        const glow = new THREE.PointLight(0xff6a20, 900, 60, 1.6);
+        const M = track.pointAt((p.s0 + p.s1) / 2);
+        glow.position.set(M.x, p.top + 4, M.z);
+        group.add(glow);
+      }
       water.userData.animTex = wt;
       group.add(water);
       p.waterMesh = water;
@@ -165,7 +177,8 @@ export function buildTrackMeshes(track, scene) {
     }
     // carteles de aviso en los laterales
     for (const side of [-1, 1]) {
-      const sign = makeSign(p.water ? '¡COCODRILOS!' : '¡FOSO!', p.water ? '#1f8a3a' : '#e0a100');
+      const txt = pitText(track.theme, p.liquid);
+      const sign = makeSign(txt, p.liquid === 'lava' ? '#d4380d' : p.liquid === 'ice' ? '#2a6fdb' : p.water ? '#1f8a3a' : '#e0a100');
       placeOnTrack(sign, track, p.s0 - 30, side * (LIMIT + 3), track.baseAt(p.s0 - 30));
       group.add(sign);
     }
@@ -245,7 +258,7 @@ export function buildTrackMeshes(track, scene) {
     arch.push([Math.cos(ang) * R, wallH + Math.sin(ang) * R * 0.85]);
   }
   arch.push([R, 0]);
-  const rockMat = new THREE.MeshStandardMaterial({ map: T.rockTex(), roughness: 1, side: THREE.DoubleSide, color: 0xb0a89c });
+  const rockMat = new THREE.MeshStandardMaterial({ map: T.rockTex(), roughness: 1, side: THREE.DoubleSide, color: track.theme.tunnel.inner });
   const inner = new THREE.Mesh(strip(track, tRows, (s) => arch.map(([d, y]) => [d, y + track.baseAt(s)]), (s, k) => [k / 4, s / 10]), rockMat);
   inner.receiveShadow = true;
   group.add(inner);
@@ -270,7 +283,7 @@ export function buildTrackMeshes(track, scene) {
     return pts;
   };
   const mRows = tRows.filter((_, i) => i % 6 === 0 || i === tRows.length - 1);
-  const mountainMat = new THREE.MeshStandardMaterial({ map: T.rockTex(), color: 0xb9cf8c, roughness: 1, flatShading: true, side: THREE.DoubleSide });
+  const mountainMat = new THREE.MeshStandardMaterial({ map: T.rockTex(), color: track.theme.tunnel.outer, roughness: 1, flatShading: true, side: THREE.DoubleSide });
   const mountain = new THREE.Mesh(strip(track, mRows, outerProfile, (s, k) => [k / 3, s / 20]), mountainMat);
   mountain.castShadow = true; mountain.receiveShadow = true;
   group.add(mountain);

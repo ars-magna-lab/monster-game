@@ -6,7 +6,7 @@ export const G = 24;
 export const HALF_W = 2.0;
 export const RADIUS = 2.3; // para choques entre camiones
 
-const SURF_SPEED = { road: 1, ramp: 1, bridge: 0.92, grass: 0.74, mud: 0.5, pit: 1, water: 1 };
+const SURF_SPEED = { road: 1, ramp: 1, bridge: 0.92, grass: 0.74, mud: 0.5, ice: 1, pit: 1, water: 1 };
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const wrapAng = (a) => {
@@ -155,7 +155,7 @@ export class Vehicle {
     if (this.onGround) {
       const spdF = clamp(Math.abs(vF) / 9, 0, 1);
       const hi = clamp(Math.abs(vF) / this.maxSpeed, 0, 1.3);
-      const turn = steer * this.turnRate * spdF * (1 - 0.32 * hi) * (this.surf === 'mud' ? 0.8 : 1);
+      const turn = steer * this.turnRate * spdF * (1 - 0.32 * hi) * (this.surf === 'mud' ? 0.8 : this.surf === 'ice' ? 0.6 : 1);
       this.th += turn * dt * (vF >= -0.5 ? 1 : -1);
     } else {
       this.th += steer * 0.9 * dt;
@@ -184,7 +184,7 @@ export class Vehicle {
         const fr = (2.5 + Math.abs(vF) * 0.04 + (stunned ? 8 : 0)) * dt;
         vF = Math.abs(vF) <= fr ? 0 : vF - Math.sign(vF) * fr;
       }
-      const grip = this.grip * (this.surf === 'mud' ? 0.35 : 1) * (stunned ? 0.35 : 1);
+      const grip = this.grip * (this.surf === 'mud' ? 0.35 : this.surf === 'ice' ? 0.1 : 1) * (stunned ? 0.35 : 1);
       vL *= Math.exp(-grip * dt);
     } else {
       vF *= Math.exp(-0.05 * dt);
@@ -276,7 +276,7 @@ export class Vehicle {
       this.state = 'fallen';
       this.stateTimer = surf.type === 'water' ? 2.1 : 1.7;
       this.fall = { pit: surf.pit, water: surf.type === 'water', floor: surf.h, splashed: false };
-      this.events.push({ type: surf.type === 'water' ? 'fallWater' : 'fallPit' });
+      this.events.push({ type: surf.type === 'water' ? 'fallWater' : 'fallPit', liquid: surf.pit?.liquid });
     }
 
     this.updateLap(game);

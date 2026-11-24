@@ -40,21 +40,46 @@ function speckle(g, w, h, n, colors, rmin, rmax, r) {
 const cache = {};
 const once = (k, f) => cache[k] || (cache[k] = f());
 
+// Colores del circuito actual (los pone setTexTheme). Las texturas del terreno
+// se guardan por circuito para no repetir el trabajo al volver a uno.
+const DEFAULT_PAL = {
+  id: 'clasico',
+  edge: ['#5f7d34', '#4e6b2a', '#76923f', '#6b5a35', '#839b4a'],
+  road: ['#9a7048', '#8a6240', '#a87d52', '#7c5638', '#b58a5c', '#6e4c30'],
+  ruts: '#4a321e', lanes: false,
+  curb: ['#d6261f', '#f4f4f4'],
+  grass: ['#5c8a35', '#4f7a2c', '#6c9c3f', '#7aa94a', '#477026', '#83a650'],
+  dirt: ['#7a5434', '#6a4629', '#8c6241', '#5a3a22', '#9b7150'],
+  barrier: ['#d42a20', '#f2f2f2'],
+  rock: ['#6d6862', '#5b5751', '#7c776f', '#4a4641', '#8a857c'],
+  patch: [[70, 44, 22], [84, 55, 30], [120, 90, 60]],
+  water: ['#2f6b5e', 'rgba(190,240,220,0.35)'],
+};
+let PAL = DEFAULT_PAL;
+export function setTexTheme(pal) { PAL = { ...DEFAULT_PAL, ...pal }; }
+const themed = (k, f) => once(k + '@' + PAL.id, f);
+
 // Camino de tierra: u = ancho completo entre barreras, v = 12 m de pista
-export const roadTex = () => once('road', () => canvasTex(512, 512, (g, w, h) => {
+export const roadTex = () => themed('road', () => canvasTex(512, 512, (g, w, h) => {
   const r = rng(7);
   // arcén de hierba/tierra
-  g.fillStyle = '#5f7d34'; g.fillRect(0, 0, w, h);
-  speckle(g, w, h, 4000, ['#4e6b2a', '#76923f', '#6b5a35', '#839b4a'], 1, 4, r);
+  g.fillStyle = PAL.edge[0]; g.fillRect(0, 0, w, h);
+  speckle(g, w, h, 4000, PAL.edge.slice(1), 1, 4, r);
   // camino
   const x0 = Math.round(w * (4 / 30)), x1 = Math.round(w * (26 / 30));
   g.save();
   g.beginPath(); g.rect(x0, 0, x1 - x0, h); g.clip();
-  g.fillStyle = '#9a7048'; g.fillRect(x0, 0, x1 - x0, h);
-  speckle(g, w, h, 9000, ['#8a6240', '#a87d52', '#7c5638', '#b58a5c', '#6e4c30'], 1, 5, r);
+  g.fillStyle = PAL.road[0]; g.fillRect(x0, 0, x1 - x0, h);
+  speckle(g, w, h, 9000, PAL.road.slice(1), 1, 5, r);
   g.restore();
+  // líneas de carril (asfalto)
+  if (PAL.lanes) {
+    g.fillStyle = 'rgba(245,245,235,0.85)';
+    for (const u of [1 / 3, 2 / 3]) g.fillRect(x0 + (x1 - x0) * u - 3, h * 0.1, 6, h * 0.4);
+    g.fillRect(x0 + 6, 0, 5, h); g.fillRect(x1 - 11, 0, 5, h);
+  }
   // roderas
-  g.globalAlpha = 0.18; g.fillStyle = '#4a321e';
+  g.globalAlpha = 0.18; g.fillStyle = PAL.ruts;
   for (const u of [0.3, 0.38, 0.62, 0.7]) {
     for (let y = 0; y < h; y += 2) g.fillRect(w * u + Math.sin(y * 0.05) * 3, y, 9, 2);
   }
@@ -62,30 +87,34 @@ export const roadTex = () => once('road', () => canvasTex(512, 512, (g, w, h) =>
   // bordillos rojo/blanco
   const cw = 12, stripes = 8;
   for (let i = 0; i < stripes; i++) {
-    g.fillStyle = i % 2 ? '#f4f4f4' : '#d6261f';
+    g.fillStyle = PAL.curb[i % 2];
     g.fillRect(x0 - cw, (i * h) / stripes, cw, h / stripes);
     g.fillRect(x1, (i * h) / stripes, cw, h / stripes);
   }
 }));
 
-export const grassTex = () => once('grass', () => canvasTex(256, 256, (g, w, h) => {
+export const grassTex = () => themed('grass', () => canvasTex(256, 256, (g, w, h) => {
   const r = rng(3);
-  g.fillStyle = '#5c8a35'; g.fillRect(0, 0, w, h);
-  speckle(g, w, h, 5000, ['#4f7a2c', '#6c9c3f', '#7aa94a', '#477026', '#83a650'], 1, 3, r);
+  g.fillStyle = PAL.grass[0]; g.fillRect(0, 0, w, h);
+  speckle(g, w, h, 5000, PAL.grass.slice(1), 1, 3, r);
+  if (PAL.tiles) {
+    g.strokeStyle = 'rgba(0,0,0,0.18)'; g.lineWidth = 2;
+    for (let i = 0; i <= 4; i++) { g.beginPath(); g.moveTo(i * w / 4, 0); g.lineTo(i * w / 4, h); g.moveTo(0, i * h / 4); g.lineTo(w, i * h / 4); g.stroke(); }
+  }
 }));
 
-export const dirtTex = () => once('dirt', () => canvasTex(256, 256, (g, w, h) => {
+export const dirtTex = () => themed('dirt', () => canvasTex(256, 256, (g, w, h) => {
   const r = rng(11);
-  g.fillStyle = '#7a5434'; g.fillRect(0, 0, w, h);
-  speckle(g, w, h, 6000, ['#6a4629', '#8c6241', '#5a3a22', '#9b7150'], 1, 5, r);
+  g.fillStyle = PAL.dirt[0]; g.fillRect(0, 0, w, h);
+  speckle(g, w, h, 6000, PAL.dirt.slice(1), 1, 5, r);
   g.globalAlpha = 0.15; g.fillStyle = '#3b2615';
   for (let y = 0; y < h; y += 16) g.fillRect(0, y + r() * 6, w, 2);
   g.globalAlpha = 1;
 }));
 
-export const barrierTex = () => once('barrier', () => canvasTex(256, 64, (g, w, h) => {
+export const barrierTex = () => themed('barrier', () => canvasTex(256, 64, (g, w, h) => {
   for (let i = 0; i < 4; i++) {
-    g.fillStyle = i % 2 ? '#f2f2f2' : '#d42a20';
+    g.fillStyle = PAL.barrier[i % 2];
     g.fillRect((i * w) / 4, 0, w / 4, h);
   }
   g.fillStyle = 'rgba(0,0,0,0.25)'; g.fillRect(0, h - 8, w, 8);
@@ -116,10 +145,10 @@ export const planksTex = () => once('planks', () => canvasTex(256, 256, (g, w, h
   }
 }));
 
-export const rockTex = () => once('rock', () => canvasTex(256, 256, (g, w, h) => {
+export const rockTex = () => themed('rock', () => canvasTex(256, 256, (g, w, h) => {
   const r = rng(21);
-  g.fillStyle = '#6d6862'; g.fillRect(0, 0, w, h);
-  speckle(g, w, h, 5000, ['#5b5751', '#7c776f', '#4a4641', '#8a857c'], 2, 8, r);
+  g.fillStyle = PAL.rock[0]; g.fillRect(0, 0, w, h);
+  speckle(g, w, h, 5000, PAL.rock.slice(1), 2, 8, r);
   g.strokeStyle = 'rgba(30,28,25,0.5)'; g.lineWidth = 2;
   for (let i = 0; i < 14; i++) {
     g.beginPath();
@@ -215,24 +244,25 @@ export const bannerTex = (text, bg = '#d42a20', fg = '#fff') => once('banner' + 
   g.fillText(text, w / 2, h / 2 + 4);
 }, { repeat: false }));
 
-export const mudTex = () => once('mud', () => canvasTex(256, 256, (g, w, h) => {
+export const mudTex = () => themed('mud', () => canvasTex(256, 256, (g, w, h) => {
   const r = rng(9);
+  const [a, b, c] = PAL.patch;
   const grd = g.createRadialGradient(128, 128, 20, 128, 128, 128);
-  grd.addColorStop(0, 'rgba(70,44,22,1)');
-  grd.addColorStop(0.75, 'rgba(84,55,30,0.95)');
-  grd.addColorStop(1, 'rgba(84,55,30,0)');
+  grd.addColorStop(0, `rgba(${a},1)`);
+  grd.addColorStop(0.75, `rgba(${b},0.95)`);
+  grd.addColorStop(1, `rgba(${b},0)`);
   g.fillStyle = grd; g.fillRect(0, 0, w, h);
   g.globalCompositeOperation = 'source-atop';
   for (let i = 0; i < 40; i++) {
-    g.fillStyle = `rgba(${120 + r() * 40},${90 + r() * 30},${60 + r() * 20},0.35)`;
+    g.fillStyle = `rgba(${c[0] + r() * 40},${c[1] + r() * 30},${c[2] + r() * 20},0.35)`;
     g.beginPath(); g.ellipse(r() * w, r() * h, 4 + r() * 14, 2 + r() * 6, r() * 3, 0, Math.PI * 2); g.fill();
   }
 }, { repeat: false }));
 
-export const waterTex = () => once('water', () => canvasTex(256, 256, (g, w, h) => {
+export const waterTex = (pal = PAL.water) => once('water' + pal.join(), () => canvasTex(256, 256, (g, w, h) => {
   const r = rng(13);
-  g.fillStyle = '#2f6b5e'; g.fillRect(0, 0, w, h);
-  g.strokeStyle = 'rgba(190,240,220,0.35)'; g.lineWidth = 2;
+  g.fillStyle = pal[0]; g.fillRect(0, 0, w, h);
+  g.strokeStyle = pal[1]; g.lineWidth = 2;
   for (let i = 0; i < 60; i++) {
     const x = r() * w, y = r() * h, l = 8 + r() * 24;
     g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo(x + l / 2, y - 4, x + l, y); g.stroke();

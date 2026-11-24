@@ -38,12 +38,14 @@ export class Obstacles {
   build() {
     const tr = this.track;
     const A = (k, rel) => tr.at(k, rel);
+    const PL = tr.circuit.places;
+    const TH = tr.theme;
 
     // ---------- Turbos ----------
     const turboMat = new THREE.MeshBasicMaterial({ map: T.turboTex(), transparent: true, opacity: 0.95 });
     const tg = new THREE.PlaneGeometry(4.5, 7);
     tg.rotateX(-Math.PI / 2); tg.rotateY(Math.PI);
-    const turboAt = [[A(0, 50), -6], [A(0, 50), 6], [A(2, 166), -5], [A(2, 166), 5], [A(7, 150), -5], [A(7, 150), 5], [A(9, 178), -5], [A(11, 120), 0]];
+    const turboAt = PL.turbos.map(([k, rel, d]) => [A(k, rel), d]);
     for (const [s, d] of turboAt) {
       const h = this.holder(s, d, 0.07);
       h.add(new THREE.Mesh(tg, turboMat));
@@ -54,7 +56,7 @@ export class Obstacles {
     // ---------- Cajas sorpresa ----------
     const boxGeo = new THREE.BoxGeometry(1.8, 1.8, 1.8);
     const boxMat = new THREE.MeshStandardMaterial({ map: T.itemBoxTex(), emissive: 0xffffff, emissiveMap: T.itemBoxTex(), emissiveIntensity: 0.35, transparent: true, opacity: 0.92, roughness: 0.2 });
-    for (const s of [A(0, 185), A(2, 250), A(7, 90), A(9, 300), A(11, 100)]) {
+    for (const s of PL.boxes.map(([k, rel]) => A(k, rel))) {
       for (const d of [-8, -4, 0, 4, 8]) {
         const m = new THREE.Mesh(boxGeo, boxMat);
         m.castShadow = true;
@@ -65,32 +67,27 @@ export class Obstacles {
       }
     }
 
-    // ---------- Troncos rodantes ----------
-    const logGeo = new THREE.CylinderGeometry(1.0, 1.0, 7, 14);
-    logGeo.rotateX(Math.PI / 2);
-    const logMats = [
-      new THREE.MeshStandardMaterial({ map: T.barkTex(), roughness: 1 }),
-      new THREE.MeshStandardMaterial({ map: T.ringsTex(), roughness: 1 }),
-      new THREE.MeshStandardMaterial({ map: T.ringsTex(), roughness: 1 }),
-    ];
-    [[35, 4.2, 0], [60, 3.6, 0.45], [85, 4.8, 0.2]].forEach(([rel, period, phase]) => {
-      const s = A(2, rel);
+    // ---------- Cosas que ruedan de lado a lado (troncos, bolas de nieve, rocas, tuberías) ----------
+    const RO = PL.rollers;
+    const roller = makeRoller(TH.roller);
+    RO.list.forEach(([rel, period, phase]) => {
+      const s = A(RO.seg, rel);
       const h = this.holder(s);
-      const m = new THREE.Mesh(logGeo, logMats);
+      const m = roller.mesh();
       m.castShadow = true;
-      m.position.y = 1.0;
+      m.position.y = roller.r;
       h.add(m);
-      this.logs.push({ s, period, phase, amp: 12.5, r: 1.0, len: 7, mesh: m, d: 0, vd: 0 });
+      this.logs.push({ s, period, phase, amp: 12.5, r: roller.r, len: roller.len, mesh: m, d: 0, vd: 0, ball: roller.ball });
     });
     for (const side of [-1, 1]) {
-      const sign = makeBoard('¡TRONCOS!', '#e0a100');
-      placeOnTrack(sign, tr, A(2, 5), side * (LIMIT + 3), 0);
+      const sign = makeBoard(TH.rollerName, '#e0a100');
+      placeOnTrack(sign, tr, A(RO.sign[0], RO.sign[1]), side * (LIMIT + 3), 0);
       this.group.add(sign);
     }
 
     // ---------- Bolas de demolición ----------
-    const g5 = tr.segs[5];
-    for (const [rel, phase] of [[g5.length * 0.25, 0], [g5.length * 0.8, Math.PI]]) {
+    const g5 = tr.segs[PL.balls.seg];
+    for (const [rel, phase] of [[g5.length * PL.balls.at[0], 0], [g5.length * PL.balls.at[1], Math.PI]]) {
       const s = tr.snap(g5.s0 + rel);
       const h = this.holder(s);
       const frameMat = new THREE.MeshStandardMaterial({ color: 0xf0b400, metalness: 0.4, roughness: 0.5 });
@@ -131,7 +128,7 @@ export class Obstacles {
 
     // ---------- La red ----------
     {
-      const s = A(11, 45);
+      const s = A(PL.net[0], PL.net[1]);
       const h = this.holder(s);
       const postMat = new THREE.MeshStandardMaterial({ color: 0x3a3a44, metalness: 0.6, roughness: 0.4 });
       const geos = [];
@@ -178,12 +175,12 @@ export class Obstacles {
 
     // ---------- Coches para aplastar ----------
     const carColors = [0x3d7ebf, 0xc0392b, 0x27ae60, 0xf39c12, 0x8e44ad, 0x95a5a6, 0x16a085, 0xd35400, 0xecf0f1];
-    const rows = [[100, [-8, -3, 2, 7]], [113, [-5.5, -0.5, 4.5, 9]], [126, [-8, -3, 2, 7]], [139, [-5.5, -0.5, 4.5, 9]]];
+    const rows = PL.crush.rows;
     let ci = 0;
     for (const [rel, ds] of rows) {
       for (const d of ds) {
-        const s = A(0, rel) + rand(-1, 1);
-        const car = makeJunkCar(carColors[ci++ % carColors.length]);
+        const s = A(PL.crush.seg, rel) + rand(-1, 1);
+        const car = TH.crush === 'snowman' ? makeSnowman() : makeJunkCar(carColors[ci++ % carColors.length]);
         placeOnTrack(car.group, tr, s, d, tr.baseAt(s) + 0.03);
         car.group.rotation.y += rand(-0.25, 0.25) + (Math.random() < 0.3 ? Math.PI : 0);
         this.group.add(car.group);
@@ -192,7 +189,7 @@ export class Obstacles {
     }
     for (const side of [-1, 1]) {
       const sign = makeBoard('¡APLASTA!', '#2ecc71');
-      placeOnTrack(sign, tr, A(0, 80), side * (LIMIT + 3), 0);
+      placeOnTrack(sign, tr, A(PL.crush.sign[0], PL.crush.sign[1]), side * (LIMIT + 3), 0);
       this.group.add(sign);
     }
 
@@ -203,9 +200,9 @@ export class Obstacles {
       new THREE.MeshStandardMaterial({ color: 0x8a1010, roughness: 0.5, metalness: 0.3 }),
       new THREE.MeshStandardMaterial({ color: 0x8a1010 }),
     ];
-    for (const [rel, ds] of [[190, [-8, -2, 4, 10]], [206, [-5, 1, 7]], [222, [-9, -2, 5]]]) {
+    for (const [rel, ds] of PL.barrels.rows) {
       for (const d of ds) {
-        const s = A(7, rel);
+        const s = A(PL.barrels.seg, rel);
         const P = tr.pointAt(s, d);
         const m = new THREE.Mesh(barrelGeo, barrelMat);
         m.position.set(P.x, tr.baseAt(s) + 0.8, P.z);
@@ -217,7 +214,8 @@ export class Obstacles {
     }
 
     // ---------- Barro ----------
-    const mudMat = new THREE.MeshStandardMaterial({ map: T.mudTex(), transparent: true, roughness: 0.18, metalness: 0.05, depthWrite: false });
+    const slick = TH.patch === 'ice' || TH.patch === 'oil';
+    const mudMat = new THREE.MeshStandardMaterial({ map: T.mudTex(), transparent: true, roughness: slick ? 0.05 : 0.18, metalness: TH.patch === 'oil' ? 0.5 : 0.05, depthWrite: false });
     for (const m of tr.mud) {
       const g = new THREE.PlaneGeometry(2 * m.rd * 1.15, 2 * m.rs * 1.15);
       g.rotateX(-Math.PI / 2);
@@ -228,14 +226,14 @@ export class Obstacles {
       h.add(mesh);
     }
     for (const side of [-1, 1]) {
-      const sign = makeBoard('¡BARRO!', '#8b5a2b');
-      placeOnTrack(sign, tr, A(9, 2), side * (LIMIT + 3), 0);
+      const sign = makeBoard(TH.patchName, TH.patch === 'ice' ? '#2a6fdb' : TH.patch === 'oil' ? '#333333' : '#8b5a2b');
+      placeOnTrack(sign, tr, A(PL.patchSign[0], PL.patchSign[1]), side * (LIMIT + 3), 0);
       this.group.add(sign);
     }
 
     // ---------- Cocodrilos ----------
-    const pit = tr.pits.find((p) => p.water);
-    if (pit) {
+    const pit = tr.pits.find((p) => p.liquid === 'water' && p.bridge);
+    if (pit && TH.crocs) {
       this.crocPit = pit;
       for (let i = 0; i < 6; i++) {
         const c = makeCroc();
@@ -548,6 +546,64 @@ function makeBoard(text, color, w = 256) {
     }
   }
   return g;
+}
+
+// Lo que rueda de lado a lado: mallas compartidas y medidas para los choques
+function makeRoller(kind) {
+  if (kind === 'snowball' || kind === 'boulder') {
+    const r = kind === 'snowball' ? 2.0 : 1.9;
+    const geo = kind === 'snowball' ? new THREE.IcosahedronGeometry(r, 2) : new THREE.DodecahedronGeometry(r, 1);
+    const mat = kind === 'snowball'
+      ? new THREE.MeshStandardMaterial({ color: 0xf6f9fc, roughness: 0.85, flatShading: true })
+      : new THREE.MeshStandardMaterial({ map: T.rockTex(), color: 0x6a5a52, roughness: 1, flatShading: true, emissive: 0x3a0a00 });
+    return { r, len: 2 * r, ball: true, mesh: () => new THREE.Mesh(geo, mat) };
+  }
+  if (kind === 'pipe') {
+    const geo = new THREE.CylinderGeometry(1.3, 1.3, 7, 16, 1, true);
+    geo.rotateX(Math.PI / 2);
+    const inner = new THREE.CylinderGeometry(1.0, 1.0, 7.02, 16, 1, true);
+    inner.rotateX(Math.PI / 2);
+    const mat = new THREE.MeshStandardMaterial({ color: 0x9a9a96, roughness: 0.9, side: THREE.DoubleSide });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 1, side: THREE.BackSide });
+    return {
+      r: 1.3, len: 7, ball: false,
+      mesh: () => { const g = new THREE.Group(); const a = new THREE.Mesh(geo, mat); a.castShadow = true; g.add(a, new THREE.Mesh(inner, dark)); return g; },
+    };
+  }
+  const logGeo = new THREE.CylinderGeometry(1.0, 1.0, 7, 14);
+  logGeo.rotateX(Math.PI / 2);
+  const logMats = [
+    new THREE.MeshStandardMaterial({ map: T.barkTex(), roughness: 1 }),
+    new THREE.MeshStandardMaterial({ map: T.ringsTex(), roughness: 1 }),
+    new THREE.MeshStandardMaterial({ map: T.ringsTex(), roughness: 1 }),
+  ];
+  return { r: 1.0, len: 7, ball: false, mesh: () => new THREE.Mesh(logGeo, logMats) };
+}
+
+// Muñeco de nieve para aplastar (mismo formato que los coches)
+function makeSnowman() {
+  const group = new THREE.Group();
+  const snow = new THREE.MeshStandardMaterial({ color: 0xf4f8fc, roughness: 0.9 });
+  const parts = [];
+  for (const [r, y] of [[1.1, 1.0], [0.8, 2.5], [0.55, 3.6]]) {
+    const g = new THREE.SphereGeometry(r, 12, 9);
+    g.translate(0, y, 0);
+    parts.push(g);
+  }
+  const body = new THREE.Mesh(mergeGeometries(parts), snow);
+  body.castShadow = true;
+  group.add(body);
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.6, 8).rotateX(Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0xff7a00 }));
+  nose.position.set(0, 3.6, 0.75);
+  group.add(nose);
+  const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 0.7, 12), new THREE.MeshStandardMaterial({ color: 0x1a1a1a }));
+  hat.position.y = 4.3;
+  group.add(hat);
+  const paint = new THREE.MeshStandardMaterial({ color: 0xd42a20 });
+  const scarf = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.14, 6, 14).rotateX(Math.PI / 2), paint);
+  scarf.position.y = 3.15;
+  group.add(scarf);
+  return { group, paint, baseColor: paint.color.clone() };
 }
 
 function makeJunkCar(color) {
