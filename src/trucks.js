@@ -6,36 +6,71 @@ import { mergeStatic } from './optimize.js';
 
 export const TRUCKS = [
   {
-    id: 'trituradora', name: 'Trituradora', num: 1, color: 0xd7261e, accent: 0x1d1d1d, rim: 0xd8d8d8, deco: 'saw',
+    id: 'trituradora', size: 1.0, style: 'pickup', name: 'Trituradora', num: 1, color: 0xd7261e, accent: 0x1d1d1d, rim: 0xd8d8d8, deco: 'saw',
     stats: { speed: 3, accel: 3, handling: 3, weight: 3 },
     desc: 'Equilibrada, con dos sierras que giran en el morro. Ideal para empezar.',
   },
   {
-    id: 'megalodon', name: 'Megalodón', num: 2, color: 0x1f6fd1, accent: 0xf2f2f2, rim: 0xffffff, deco: 'shark',
+    id: 'megalodon', size: 1.15, style: 'shark', name: 'Megalodón', num: 2, color: 0x1f6fd1, accent: 0xf2f2f2, rim: 0xffffff, deco: 'shark',
     stats: { speed: 5, accel: 2, handling: 2, weight: 3 },
     desc: 'La velocidad punta más alta, pero cuesta hacerle girar.',
   },
   {
-    id: 'escorpion', name: 'Escorpión', num: 3, color: 0x7ed321, accent: 0x1b1b1b, rim: 0x222222, deco: 'scorpion',
+    id: 'escorpion', size: 0.9, style: 'buggy', name: 'Escorpión', num: 3, color: 0x7ed321, accent: 0x1b1b1b, rim: 0x222222, deco: 'scorpion',
     stats: { speed: 2, accel: 4, handling: 5, weight: 1 },
     desc: 'Sale disparado y gira como nadie. Ligero: los golpes le afectan más.',
   },
   {
-    id: 'mamut', name: 'Mamut', num: 4, color: 0x8b5a2b, accent: 0xf2e6c9, rim: 0xc9a46a, deco: 'mammoth',
+    id: 'mamut', size: 1.32, style: 'hauler', name: 'Mamut', num: 4, color: 0x8b5a2b, accent: 0xf2e6c9, rim: 0xc9a46a, deco: 'mammoth',
     stats: { speed: 3, accel: 2, handling: 2, weight: 5 },
     desc: 'Pesadísimo: troncos y empujones apenas le frenan.',
   },
   {
-    id: 'relampago', name: 'Relámpago', num: 5, color: 0xffcc00, accent: 0x111111, rim: 0x111111, deco: 'bolt',
+    id: 'relampago', size: 0.82, style: 'wedge', name: 'Relámpago', num: 5, color: 0xffcc00, accent: 0x111111, rim: 0x111111, deco: 'bolt',
     stats: { speed: 4, accel: 4, handling: 3, weight: 1 },
     desc: 'Rápido y ágil, pero ligero como una pluma.',
   },
   {
-    id: 'dragon', name: 'Dragón', num: 6, color: 0x7b2cbf, accent: 0x39e639, rim: 0x39e639, deco: 'dragon',
+    id: 'dragon', size: 1.12, style: 'dragon', name: 'Dragón', num: 6, color: 0x7b2cbf, accent: 0x39e639, rim: 0x39e639, deco: 'dragon',
     stats: { speed: 4, accel: 3, handling: 2, weight: 3 },
     desc: 'Escamas, cuernos y alas. Corre mucho y aguanta bien los golpes.',
   },
 ];
+
+// Formas de carrocería: perfil lateral (z adelante, y arriba), ventanilla y
+// dónde van los detalles (techo, morro, cola, faros), más qué extras lleva.
+const STYLES = {
+  pickup: {
+    shell: [[-2.35, 0.0], [2.45, 0.0], [2.55, 0.45], [2.35, 0.85], [0.95, 0.98], [0.35, 1.78], [-0.85, 1.82], [-1.05, 1.0], [-2.35, 1.02]],
+    glass: [[0.99, 1.0], [0.4, 1.76], [-0.8, 1.76], [-0.98, 1.04]],
+    w: 2.1, roofY: 1.82, roofZ: -0.25, noseZ: 2.48, tailZ: -2.45, hlY: 0.62, tlY: 0.75, bar: true, exhaust: true,
+  },
+  shark: {
+    shell: [[-2.6, 0.0], [2.75, 0.0], [2.95, 0.25], [1.7, 0.85], [0.55, 1.6], [-0.95, 1.7], [-1.4, 1.05], [-2.6, 1.1]],
+    glass: [[1.45, 0.98], [0.55, 1.58], [-0.9, 1.66], [-1.15, 1.1]],
+    w: 2.15, roofY: 1.68, roofZ: -0.3, noseZ: 2.9, tailZ: -2.7, hlY: 0.35, tlY: 0.8, bar: false, exhaust: true,
+  },
+  buggy: {
+    shell: [[-2.05, 0.0], [2.3, 0.0], [2.45, 0.45], [1.2, 0.75], [-1.2, 0.75], [-1.35, 1.15], [-2.05, 1.15]],
+    glass: null,
+    w: 1.9, roofY: 2.15, roofZ: -0.1, noseZ: 2.4, tailZ: -2.1, hlY: 0.45, tlY: 0.85, bar: true, exhaust: false, cage: true,
+  },
+  hauler: {
+    shell: [[-2.4, 0.0], [2.55, 0.0], [2.6, 1.05], [1.45, 1.15], [1.15, 2.15], [-0.85, 2.2], [-1.15, 1.25], [-2.4, 1.3]],
+    glass: [[1.2, 1.2], [1.0, 2.0], [-0.7, 2.06], [-0.95, 1.3]],
+    w: 2.45, roofY: 2.2, roofZ: 0.1, noseZ: 2.6, tailZ: -2.45, hlY: 0.75, tlY: 0.95, bar: true, exhaust: true, grille: true,
+  },
+  wedge: {
+    shell: [[-2.4, 0.0], [2.6, 0.0], [2.7, 0.25], [0.95, 0.72], [0.15, 1.32], [-1.0, 1.34], [-1.55, 0.92], [-2.4, 0.95]],
+    glass: [[0.92, 0.75], [0.18, 1.3], [-0.95, 1.3], [-1.35, 0.95]],
+    w: 2.05, roofY: 1.34, roofZ: -0.4, noseZ: 2.7, tailZ: -2.45, hlY: 0.3, tlY: 0.7, bar: false, exhaust: false, spoiler: true,
+  },
+  dragon: {
+    shell: [[-2.45, 0.0], [2.5, 0.0], [2.75, 0.5], [2.05, 0.95], [0.85, 1.05], [0.3, 1.88], [-0.9, 1.92], [-1.2, 1.12], [-2.45, 1.2]],
+    glass: [[0.88, 1.07], [0.35, 1.85], [-0.85, 1.86], [-1.12, 1.15]],
+    w: 2.2, roofY: 1.92, roofZ: -0.3, noseZ: 2.6, tailZ: -2.55, hlY: 0.65, tlY: 0.9, bar: false, exhaust: true, eyes: true,
+  },
+};
 
 export const WHEEL_R = 1.1;
 const WHEEL_W = 0.95;
@@ -107,14 +142,13 @@ export function buildTruck(def) {
   const rimMat = new THREE.MeshStandardMaterial({ color: def.rim, metalness: 0.8, roughness: 0.3 });
 
   // Carrocería
-  const shellPts = [
-    [-2.35, 0.0], [2.45, 0.0], [2.55, 0.45], [2.35, 0.85], [0.95, 0.98],
-    [0.35, 1.78], [-0.85, 1.82], [-1.05, 1.0], [-2.35, 1.02],
-  ];
-  const shell = mesh(extrudeProfile(shellPts, 2.1), paint);
+  const S = STYLES[def.style] || STYLES.pickup;
+  const shell = mesh(extrudeProfile(S.shell, S.w), paint);
   body.add(shell);
-  const win = mesh(extrudeProfile([[0.99, 1.0], [0.4, 1.76], [-0.8, 1.76], [-0.98, 1.04]], 2.3, 0), A.glass, false);
-  body.add(win);
+  if (S.glass) {
+    const win = mesh(extrudeProfile(S.glass, S.w + 0.2, 0), A.glass, false);
+    body.add(win);
+  }
   // chasis y bajos
   const chassis = mesh(new THREE.BoxGeometry(1.7, 0.45, 4.6), A.dark);
   chassis.position.y = -0.3;
@@ -122,51 +156,112 @@ export function buildTruck(def) {
   // franjas laterales
   for (const sx of [-1, 1]) {
     const st = mesh(new THREE.BoxGeometry(0.03, 0.22, 4.4), accent, false);
-    st.position.set(sx * 1.14, 0.5, 0.05);
+    st.position.set(sx * (S.w / 2 + 0.09), 0.5, 0.05);
     body.add(st);
     const num = new THREE.Mesh(new THREE.PlaneGeometry(0.85, 0.85), new THREE.MeshStandardMaterial({
       map: T.numberTex(def.num, '#' + new THREE.Color(def.color).getHexString(), '#' + new THREE.Color(def.accent).getHexString()),
       transparent: true,
     }));
-    num.position.set(sx * 1.16, 0.55, -1.6);
+    num.position.set(sx * (S.w / 2 + 0.11), 0.55, -1.6);
     num.rotation.y = sx * Math.PI / 2;
     body.add(num);
   }
   // franja central en el techo y el capó
   const roofStripe = mesh(new THREE.BoxGeometry(0.5, 0.03, 1.15), accent, false);
-  roofStripe.position.set(0, 1.91, -0.25);
-  body.add(roofStripe);
+  roofStripe.position.set(0, S.roofY + 0.09, S.roofZ);
+  if (S.glass) body.add(roofStripe);
   // faros
   for (const sx of [-1, 1]) {
     const hl = mesh(new THREE.BoxGeometry(0.45, 0.25, 0.1), A.headlight, false);
-    hl.position.set(sx * 0.7, 0.62, 2.48);
+    hl.position.set(sx * 0.7, S.hlY, S.noseZ);
     body.add(hl);
     const tl = mesh(new THREE.BoxGeometry(0.35, 0.22, 0.1), A.taillight, false);
-    tl.position.set(sx * 0.75, 0.75, -2.45);
+    tl.position.set(sx * 0.75, S.tlY, S.tailZ);
     body.add(tl);
   }
   // barra de luces en el techo
-  const bar = mesh(new THREE.BoxGeometry(1.7, 0.16, 0.25), A.dark);
-  bar.position.set(0, 1.98, 0.25);
-  body.add(bar);
-  for (let i = 0; i < 4; i++) {
-    const l = mesh(new THREE.BoxGeometry(0.28, 0.2, 0.08), A.headlight, false);
-    l.position.set(-0.6 + i * 0.4, 1.98, 0.4);
-    body.add(l);
+  if (S.bar) {
+    const bar = mesh(new THREE.BoxGeometry(1.7, 0.16, 0.25), A.dark);
+    bar.position.set(0, S.roofY + 0.16, S.roofZ + 0.5);
+    body.add(bar);
+    for (let i = 0; i < 4; i++) {
+      const l = mesh(new THREE.BoxGeometry(0.28, 0.2, 0.08), A.headlight, false);
+      l.position.set(-0.6 + i * 0.4, S.roofY + 0.16, S.roofZ + 0.65);
+      body.add(l);
+    }
   }
-  // escapes
-  for (const sx of [-1, 1]) {
-    const ex = mesh(new THREE.CylinderGeometry(0.11, 0.13, 1.6, 10), A.chrome);
-    ex.position.set(sx * 0.85, 1.55, -1.2);
-    body.add(ex);
+  // escapes cromados (el Mamut lleva chimeneas de camión)
+  if (S.exhaust) {
+    const tall = def.style === 'hauler';
+    for (const sx of [-1, 1]) {
+      const ex = mesh(new THREE.CylinderGeometry(tall ? 0.16 : 0.11, tall ? 0.18 : 0.13, tall ? 2.6 : 1.6, 10), A.chrome);
+      ex.position.set(sx * (S.w / 2 - 0.2), tall ? 2.2 : 1.55, tall ? 0.95 : -1.2);
+      body.add(ex);
+    }
+  }
+  // jaula antivuelco del buggy, con asiento
+  if (S.cage) {
+    const tube = (a, b, r = 0.08) => {
+      const va = new THREE.Vector3(...a), vb = new THREE.Vector3(...b);
+      const len = va.distanceTo(vb);
+      const m = mesh(new THREE.CylinderGeometry(r, r, len, 8), A.chrome);
+      m.position.copy(va).add(vb).multiplyScalar(0.5);
+      m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), vb.clone().sub(va).normalize());
+      body.add(m);
+    };
+    const x = S.w / 2 - 0.15, top = S.roofY;
+    for (const sx of [-x, x]) {
+      tube([sx, 0.75, 1.15], [sx * 0.85, top, 0.2]);
+      tube([sx * 0.85, top, 0.2], [sx * 0.85, top, -1.0]);
+      tube([sx * 0.85, top, -1.0], [sx, 1.15, -1.4]);
+    }
+    tube([-x * 0.85, top, 0.2], [x * 0.85, top, 0.2]);
+    tube([-x * 0.85, top, -1.0], [x * 0.85, top, -1.0]);
+    const seat = mesh(new THREE.BoxGeometry(0.8, 0.9, 0.25), A.dark);
+    seat.position.set(0, 1.2, -0.75);
+    seat.rotation.x = -0.15;
+    body.add(seat);
+  }
+  // rejilla grande del Mamut
+  if (S.grille) {
+    const gr = mesh(new THREE.BoxGeometry(1.8, 0.85, 0.12), A.chrome);
+    gr.position.set(0, 0.55, S.noseZ + 0.02);
+    body.add(gr);
+    for (let i = 0; i < 6; i++) {
+      const sl = mesh(new THREE.BoxGeometry(0.1, 0.7, 0.06), A.dark, false);
+      sl.position.set(-0.75 + i * 0.3, 0.55, S.noseZ + 0.09);
+      body.add(sl);
+    }
+  }
+  // alerón trasero del Relámpago
+  if (S.spoiler) {
+    const wing = mesh(new THREE.BoxGeometry(S.w + 0.3, 0.08, 0.6), accent);
+    wing.position.set(0, 1.75, -2.15);
+    wing.rotation.x = 0.12;
+    body.add(wing);
+    for (const sx of [-0.7, 0.7]) {
+      const st = mesh(new THREE.BoxGeometry(0.1, 0.8, 0.25), accent);
+      st.position.set(sx, 1.33, -2.1);
+      body.add(st);
+    }
+  }
+  // ojos brillantes del Dragón
+  if (S.eyes) {
+    const eyeMat = new THREE.MeshStandardMaterial({ color: 0xaaff66, emissive: 0x66ff22, emissiveIntensity: 1.6 });
+    for (const sx of [-1, 1]) {
+      const e = mesh(new THREE.SphereGeometry(0.16, 10, 8), eyeMat, false);
+      e.scale.set(1.4, 0.7, 0.6);
+      e.position.set(sx * 0.55, 0.88, S.noseZ - 0.12);
+      body.add(e);
+    }
   }
   // defensa delantera de tubos
   const guard = mesh(new THREE.BoxGeometry(2.0, 0.18, 0.18), A.chrome);
-  guard.position.set(0, 0.2, 2.62);
+  guard.position.set(0, 0.2, S.noseZ + 0.14);
   body.add(guard);
   for (const sx of [-0.6, 0.6]) {
     const v = mesh(new THREE.BoxGeometry(0.14, 0.6, 0.14), A.chrome);
-    v.position.set(sx, 0.35, 2.62);
+    v.position.set(sx, 0.35, S.noseZ + 0.14);
     body.add(v);
   }
 
@@ -211,6 +306,7 @@ export function buildTruck(def) {
 
   root.traverse((o) => { if (o.isMesh) o.receiveShadow = false; });
   mergeStatic(body, new Set(spinners.map((s) => s.obj)));
+  root.scale.setScalar(def.size || 1);
   return { root, body, wheels, shocks, spinners, paint };
 }
 

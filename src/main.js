@@ -720,8 +720,8 @@ class Game {
         if (b.state === 'fallen') continue;
         const dx = b.x - a.x, dz = b.z - a.z;
         const d2 = dx * dx + dz * dz;
-        const R2 = RADIUS * 2;
-        if (d2 > R2 * R2 || Math.abs(a.y - b.y) > 2.8) continue;
+        const R2 = RADIUS * (a.size + b.size);
+        if (d2 > R2 * R2 || Math.abs(a.y - b.y) > 2.8 * Math.max(a.size, b.size)) continue;
         const d = Math.sqrt(d2) || 0.01;
         const nx = dx / d, nz = dz / d;
         const over = R2 - d;
@@ -1114,8 +1114,9 @@ class Game {
       }
       const sp = Math.abs(p.vF);
       const wide = cam.aspect > 2.6; // media pantalla apaisada: un poco más de altura
-      const dist = (10.5 + clamp(sp * 0.07, 0, 3.2)) * (portrait ? 1.55 : 1);
-      const height = (4.4 + clamp(sp * 0.02, 0, 0.8)) * (portrait ? 1.35 : wide ? 0.9 : 1);
+      const big = 0.55 + 0.45 * p.size; // los camiones grandes llevan la cámara algo más lejos
+      const dist = (10.5 + clamp(sp * 0.07, 0, 3.2)) * (portrait ? 1.55 : 1) * big;
+      const height = (4.4 + clamp(sp * 0.02, 0, 0.8)) * (portrait ? 1.35 : wide ? 0.9 : 1) * big;
       const baseY = p.state === 'fallen' && p.fall ? Math.max(p.y, p.fall.pit.top - 1) : p.y;
       const want = new THREE.Vector3(p.x - Math.cos(view.camYaw) * dist, baseY + height, p.z - Math.sin(view.camYaw) * dist);
       const q = this.track.project(want.x, want.z, p.idx);

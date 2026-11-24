@@ -20,6 +20,7 @@ export class Vehicle {
     this.def = def;
     this.track = track;
     this.isPlayer = isPlayer;
+    this.size = def.size || 1;
     const st = def.stats;
     this.maxSpeed = 31 + st.speed * 2.3;
     this.accel = 8 + st.accel * 2.3;
@@ -204,7 +205,7 @@ export class Vehicle {
     this.idx = p.i; this.s = p.s; this.d = p.d;
 
     // barreras
-    const lim = LIMIT - HALF_W;
+    const lim = LIMIT - HALF_W * this.size;
     if (Math.abs(this.d) > lim) {
       const sg = Math.sign(this.d);
       const pen = Math.abs(this.d) - lim;
