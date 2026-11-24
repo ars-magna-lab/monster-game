@@ -214,7 +214,7 @@ class Game {
   buildShowroom() {
     const scene = new THREE.Scene();
     scene.environment = this.envMap;
-    scene.environmentIntensity = 0.7;
+    scene.environmentIntensity = 0.35;
     const cam = new THREE.PerspectiveCamera(38, 1, 0.5, 500);
     const bg = new THREE.Mesh(new THREE.SphereGeometry(200, 32, 16), new THREE.ShaderMaterial({
       side: THREE.BackSide, depthWrite: false,
@@ -309,7 +309,7 @@ class Game {
     if (this.state !== 'race' && this.state !== 'countdown') return;
     this.prevState = this.state;
     this.state = 'paused';
-    this.sound.engineUpdate(0, 0, false, false);
+    this.sound.engineStop();
     this.showScreen('pause');
   }
 
@@ -317,6 +317,7 @@ class Game {
     if (this.state !== 'paused') return;
     this.state = this.prevState;
     this.showScreen(null);
+    this.sound.engineStart();
     this.last = performance.now();
   }
 
@@ -539,6 +540,7 @@ class Game {
   }
 
   frame(dt) {
+    this.frames = (this.frames || 0) + 1;
     this.time += dt;
     const inp = this.input;
     inp.padEdges();
@@ -646,7 +648,7 @@ class Game {
       this.sound.play('go');
       for (const l of lights) l.material.color.setHex(0x22ff44);
       const held = this.throttleHeldSince;
-      if (held !== null && held <= 1.6 && !this.autopilot) {
+      if (held !== null && held <= 2.0 && !this.autopilot) {
         this.player.boost = 1.4;
         this.hud.message('¡SALIDA TURBO!', 1.2);
         this.sound.play('nitro', 0.7);

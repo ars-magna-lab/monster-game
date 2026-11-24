@@ -101,7 +101,7 @@ export function buildTruck(def) {
   body.position.y = BODY_Y;
   root.add(body);
 
-  const paint = new THREE.MeshStandardMaterial({ color: def.color, metalness: 0.35, roughness: 0.35 });
+  const paint = new THREE.MeshStandardMaterial({ color: def.color, metalness: 0.2, roughness: 0.42 });
   const accent = new THREE.MeshStandardMaterial({ color: def.accent, metalness: 0.25, roughness: 0.45 });
   const rimMat = new THREE.MeshStandardMaterial({ color: def.rim, metalness: 0.8, roughness: 0.3 });
 
@@ -283,24 +283,25 @@ function addDeco(def, body, paint, accent, A, spinners) {
       break;
     }
     case 'scorpion': {
-      const pts = [];
-      for (let i = 0; i < 7; i++) {
-        const t = i / 6;
-        const a = Math.PI * 0.05 + t * Math.PI * 0.95;
-        pts.push(new THREE.Vector3(0, 1.1 + Math.sin(a) * 2.2, -2.2 + (1 - Math.cos(a)) * 1.5));
-      }
-      pts.forEach((p, i) => {
-        const r = 0.42 - i * 0.04;
+      // cola segmentada que sale de la caja y se curva por encima de la cabina
+      const curve = new THREE.CubicBezierCurve3(
+        new THREE.Vector3(0, 1.05, -2.0), new THREE.Vector3(0, 3.4, -3.4),
+        new THREE.Vector3(0, 4.6, -0.6), new THREE.Vector3(0, 3.3, 0.45),
+      );
+      const n = 12;
+      for (let i = 0; i < n; i++) {
+        const t = i / (n - 1);
+        const p = curve.getPoint(t);
+        const r = 0.46 - t * 0.24;
         const seg = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 10), i % 2 ? accent : paint);
         seg.position.copy(p);
-        seg.scale.set(1, 0.85, 1.15);
         seg.castShadow = true;
         body.add(seg);
-      });
-      const sting = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.75, 8), black);
-      const last = pts[pts.length - 1];
-      sting.position.set(0, last.y - 0.4, last.z + 0.2);
-      sting.rotation.x = Math.PI * 0.8;
+      }
+      const end = curve.getPoint(1), tan = curve.getTangent(1);
+      const sting = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.8, 8), black);
+      sting.position.copy(end).addScaledVector(tan, 0.45);
+      sting.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tan);
       body.add(sting);
       for (const sx of [-1, 1]) {
         const arm = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.28, 0.9), accent);

@@ -100,5 +100,46 @@ if (mode === 'carrera' || mode === 'todo') {
   console.log(JSON.stringify(res, null, 1));
 }
 
+if (mode === 'teclado' || mode === 'todo') {
+  const frames = async (n = 3) => {
+    const f0 = await page.evaluate(() => window.__mm.frames);
+    await page.waitForFunction((f) => window.__mm.frames >= f, { timeout: 60000 }, f0 + n);
+  };
+  const get = () => page.evaluate(() => { const g = window.__mm; const p = g.player; return { state: g.state, v: +p.speed.toFixed(1), th: +p.th.toFixed(2), boost: +p.boost.toFixed(2), item: p.item }; });
+  await page.evaluate(() => window.__mm.goTitle());
+  await frames();
+  await page.keyboard.press('Enter');
+  await frames();
+  await page.keyboard.press('ArrowRight');
+  await frames();
+  await page.keyboard.press('Enter');
+  await frames();
+  await page.evaluate(() => { window.__mm.countdown = 0.01; window.__mm.autopilot = false; });
+  await frames();
+  const r = { inicio: await get() };
+  await page.keyboard.down('ArrowUp');
+  await frames(40);
+  r.acelerando = await get();
+  await page.keyboard.down('ArrowLeft');
+  await frames(20);
+  await page.keyboard.up('ArrowLeft');
+  r.girando = await get();
+  await page.evaluate(() => { window.__mm.player.item = 'nitro'; });
+  await page.keyboard.press('Space');
+  await frames();
+  r.nitro = await get();
+  await page.keyboard.up('ArrowUp');
+  await page.keyboard.press('KeyP');
+  await frames();
+  r.pausa = await get();
+  await page.keyboard.press('KeyP');
+  await frames();
+  r.sigue = await get();
+  r.fps = await page.evaluate(async () => { const f0 = window.__mm.frames; await new Promise((res) => setTimeout(res, 2000)); return (window.__mm.frames - f0) / 2; });
+  console.log(JSON.stringify(r));
+  const ok = r.acelerando.v > r.inicio.v + 3 && r.girando.th !== r.acelerando.th && (r.nitro.boost > 0 || r.nitro.item === null) && r.pausa.state === 'paused' && r.sigue.state === 'race';
+  console.log(ok ? 'Teclado: OK' : 'Teclado: FALLA');
+}
+
 console.log(errors.length ? 'ERRORES:\n' + errors.join('\n') : 'Sin errores en consola');
 await browser.close();

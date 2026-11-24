@@ -175,7 +175,7 @@ export class Vehicle {
         if (vF > 1) vF -= 32 * brk * dt;
         else vF = Math.max(-13, vF - this.accel * 0.6 * brk * dt);
       }
-      if (vF > maxV) vF = Math.max(maxV, vF - ((vF - maxV) * 2.5 + 3) * dt);
+      if (vF > maxV) vF = Math.max(maxV, vF - ((vF - maxV) * 1.3 + 2) * dt);
       if (thr === 0 && brk === 0) {
         const fr = (2.5 + Math.abs(vF) * 0.04 + (stunned ? 8 : 0)) * dt;
         vF = Math.abs(vF) <= fr ? 0 : vF - Math.sign(vF) * fr;
