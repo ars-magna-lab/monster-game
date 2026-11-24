@@ -4,7 +4,7 @@ Carreras de monster trucks en 3D para el navegador, al estilo de los juegos de k
 
 ## Jugar
 
-Juega en línea en la dirección publicada (GitHub Pages) o abre `index.html` en el navegador (doble clic o `xdg-open index.html`). No hace falta servidor:
+Juega en línea en https://monster-game.arsmagnalab.com o abre `index.html` en el navegador (doble clic o `xdg-open index.html`). No hace falta servidor:
 el juego ya compilado está en `dist/game.js`.
 
 Controles:
