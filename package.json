@@ -1,0 +1,18 @@
+{
+  "name": "mega-monstruos",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Carreras de monster trucks en 3D para el navegador",
+  "scripts": {
+    "build": "esbuild src/main.js --bundle --minify --format=iife --target=es2020 --outfile=dist/game.js",
+    "dev": "esbuild src/main.js --bundle --format=iife --target=es2020 --sourcemap --outfile=dist/game.js --watch",
+    "test": "node tools/smoke.mjs"
+  },
+  "dependencies": {
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "puppeteer-core": "^25.18.1"
+  }
+}

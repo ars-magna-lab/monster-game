@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Mega Monstruos</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='14' y='18' width='36' height='16' rx='4' fill='%23d7261e'/%3E%3Ccircle cx='18' cy='44' r='12' fill='%23222'/%3E%3Ccircle cx='46' cy='44' r='12' fill='%23222'/%3E%3Ccircle cx='18' cy='44' r='5' fill='%23ccc'/%3E%3Ccircle cx='46' cy='44' r='5' fill='%23ccc'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bangers&family=Nunito:wght@700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="loading">Cargando monstruos…</div>
+
+<!-- HUD de carrera -->
+<div id="hud" class="hidden">
+  <div id="hud-pos"><span id="pos-num">1</span><span id="pos-suf">º</span><small id="pos-total">/6</small></div>
+  <div id="hud-lap">VUELTA <b id="lap-num">1</b>/<span id="lap-total">3</span></div>
+  <ol id="ranking"></ol>
+  <div id="hud-time"><div id="time-total">0:00.00</div><div id="time-best"></div></div>
+  <div id="hud-item"><div id="item-slot"></div><div id="item-name"></div><small class="keyhint">ESPACIO</small></div>
+  <canvas id="minimap" width="220" height="220"></canvas>
+  <div id="hud-speed"><span id="speed-num">0</span><small>km/h</small><div id="boost-bar"><div id="boost-fill"></div></div></div>
+  <div id="hud-msg"></div>
+  <div id="hud-big"></div>
+  <div id="hud-hint"></div>
+</div>
+<button id="btn-pause" class="hidden" aria-label="Pausa">II</button>
+
+<!-- Controles táctiles -->
+<div id="touch" class="hidden">
+  <div class="tleft">
+    <button data-touch="left" aria-label="Izquierda">◀</button>
+    <button data-touch="right" aria-label="Derecha">▶</button>
+  </div>
+  <div class="tright">
+    <button data-touch="item" class="titem" aria-label="Objeto">★</button>
+    <button data-touch="brake" class="tbrake" aria-label="Frenar">▼</button>
+    <button data-touch="gas" class="tgas" aria-label="Acelerar">▲</button>
+  </div>
+</div>
+
+<!-- Portada -->
+<div id="screen-title" class="screen hidden">
+  <div class="logo">
+    <div class="logo-top">MEGA</div>
+    <div class="logo-main">MONSTRUOS</div>
+    <div class="logo-sub">Gran Premio del Barro</div>
+  </div>
+  <button id="btn-play" class="big-btn">¡JUGAR!</button>
+  <div class="controls">
+    <span><kbd>←</kbd><kbd>→</kbd> girar</span>
+    <span><kbd>↑</kbd> acelerar</span>
+    <span><kbd>↓</kbd> frenar</span>
+    <span><kbd>Espacio</kbd> usar objeto</span>
+    <span><kbd>R</kbd> volver a la pista</span>
+    <span><kbd>P</kbd> pausa</span>
+    <span><kbd>M</kbd> silencio</span>
+  </div>
+  <div class="obstacles-list">Fosos · troncos rodantes · túnel · foso de cocodrilos · la red · bolas de demolición · barro · barriles explosivos · coches para aplastar</div>
+  <div class="corner-btns">
+    <button id="btn-sound" class="round" title="Sonido (M)"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path d="M16 8.5c1.5 1.8 1.5 5.2 0 7M18.5 6c2.8 3.2 2.8 8.8 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+    <button id="btn-music" class="round" title="Música"><svg viewBox="0 0 24 24"><path d="M9 17V5l11-2v12" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="6.5" cy="17.5" r="2.8" fill="currentColor"/><circle cx="17.5" cy="15.5" r="2.8" fill="currentColor"/></svg></button>
+  </div>
+</div>
+
+<!-- Selección de camión -->
+<div id="screen-select" class="screen hidden">
+  <h2>ELIGE TU MONSTRUO</h2>
+  <button id="btn-prev" class="arrow left" aria-label="Anterior">◀</button>
+  <button id="btn-next" class="arrow right" aria-label="Siguiente">▶</button>
+  <div class="panel">
+    <div id="truck-dots"></div>
+    <div id="truck-name">Trituradora</div>
+    <div id="truck-desc"></div>
+    <div id="truck-stats"></div>
+    <div class="opts">
+      <div class="opt"><span>Vueltas</span>
+        <button data-laps="1">1</button><button data-laps="3">3</button><button data-laps="5">5</button>
+      </div>
+      <div class="opt"><span>Rivales</span>
+        <button data-diff="facil">Fácil</button><button data-diff="normal">Normal</button><button data-diff="dificil">Difícil</button>
+      </div>
+    </div>
+    <div id="truck-record"></div>
+    <div class="row">
+      <button id="btn-back" class="small-btn">Atrás</button>
+      <button id="btn-start" class="big-btn">¡A CORRER!</button>
+    </div>
+  </div>
+</div>
+
+<!-- Pausa -->
+<div id="screen-pause" class="screen dim hidden">
+  <h2>PAUSA</h2>
+  <button id="btn-resume" class="big-btn">Continuar</button>
+  <button id="btn-restart" class="small-btn">Reiniciar carrera</button>
+  <button id="btn-quit" class="small-btn">Salir al menú</button>
+</div>
+
+<!-- Resultados -->
+<div id="screen-results" class="screen dim hidden">
+  <h2 id="res-title">¡HAS GANADO!</h2>
+  <table id="res-table"></table>
+  <div id="res-extra"></div>
+  <div class="row">
+    <button id="btn-again" class="big-btn">Revancha</button>
+  </div>
+  <div class="row">
+    <button id="btn-change" class="small-btn">Cambiar camión</button>
+    <button id="btn-menu" class="small-btn">Menú</button>
+  </div>
+</div>
+
+<script src="dist/game.js"></script>
+</body>
+</html>

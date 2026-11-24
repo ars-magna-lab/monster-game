@@ -1,0 +1,4 @@
+node_modules/
+ESTADO.yaml
+*.log
+shots/
