@@ -18,9 +18,13 @@ Controles:
 | R | Volver a la pista |
 | P / Esc | Pausa |
 | M | Silencio |
+| F | Ver los fps y la calidad gráfica |
 
 También funciona con mando (stick o cruceta, RT/A acelera, LT/B frena, X/RB objeto, Y vuelve a la pista)
 y con botones táctiles en móvil o tableta.
+
+Si el juego va a tirones, elige «Gráficos: Baja» en la elección de camión. En «Auto» (por defecto) el juego
+detecta si el ordenador no tiene aceleración gráfica y baja la resolución y las sombras él solo.
 
 Truco: si aceleras justo después del «2» de la cuenta atrás, sales con turbo.
 
@@ -70,4 +74,4 @@ Añade `?auto` a la URL para que el ordenador conduzca tu camión (sirve de demo
 
 Código en `src/`: `track.js` (trazado y alturas), `trackMesh.js` (mallas de la pista), `trucks.js`
 (camiones), `vehicle.js` (física), `ai.js` (rivales), `obstacles.js`, `world.js` (escenario),
-`hud.js`, `audio.js` (sonido sintetizado), `music.js` (canciones), `main.js` (estados del juego y cámara).
+`hud.js`, `audio.js` (sonido sintetizado), `music.js` (canciones), `optimize.js` (trucos de rendimiento), `main.js` (estados del juego y cámara).

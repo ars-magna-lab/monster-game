@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import * as T from './textures.js';
+import { mergeStatic } from './optimize.js';
 
 export const TRUCKS = [
   {
@@ -209,6 +210,7 @@ export function buildTruck(def) {
   addDeco(def, body, paint, accent, A, spinners);
 
   root.traverse((o) => { if (o.isMesh) o.receiveShadow = false; });
+  mergeStatic(body, new Set(spinners.map((s) => s.obj)));
   return { root, body, wheels, shocks, spinners, paint };
 }
 

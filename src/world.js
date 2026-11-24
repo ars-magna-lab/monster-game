@@ -1,5 +1,6 @@
 // Escenario: cielo, luces, terreno, montañas, árboles, gradas y decoración.
 import * as THREE from 'three';
+import { splitBigMeshes } from './optimize.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { LIMIT } from './track.js';
 import { placeOnTrack } from './trackMesh.js';
@@ -221,8 +222,8 @@ export function buildWorld(scene, track) {
   scene.add(new THREE.Mesh(mergeGeometries(poleGeos), new THREE.MeshStandardMaterial({ color: 0xdddddd, metalness: 0.5 })));
 
   // pilas de neumáticos en el exterior de las curvas
-  const tireGeo = new THREE.TorusGeometry(0.75, 0.32, 8, 16);
-  tireGeo.rotateX(Math.PI / 2);
+  // neumático sencillo (cilindro hueco): pocos triángulos, se ve igual desde la pista
+  const tireGeo = new THREE.CylinderGeometry(1.05, 1.05, 0.6, 12, 1, false);
   const stackGeos = [];
   for (const g of track.segs) {
     if (g.type !== 'A') continue;
@@ -240,6 +241,7 @@ export function buildWorld(scene, track) {
   const stacks = new THREE.Mesh(mergeGeometries(stackGeos), new THREE.MeshStandardMaterial({ color: 0x1d1d1d, roughness: 0.9 }));
   stacks.castShadow = true;
   scene.add(stacks);
+  splitBigMeshes(scene, 3000);
 
   // nubes
   const cloudGeos = [];
@@ -279,6 +281,11 @@ export function buildWorld(scene, track) {
   return {
     sun, hemi, sky,
     baseHemi: hemi.intensity, baseSun: sun.intensity,
+    setShadowSize(n) {
+      if (sun.shadow.mapSize.x === n) return;
+      sun.shadow.mapSize.set(n, n);
+      if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
+    },
     // la zona con sombras sigue al jugador que se va a dibujar
     focus(p) {
       sun.target.position.set(p.x, p.y, p.z);

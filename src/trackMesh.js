@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { ROAD_HALF, LIMIT } from './track.js';
 import * as T from './textures.js';
+import { splitBigMeshes } from './optimize.js';
 
 // Cinta genérica a lo largo de la pista.
 // rows: valores de s; profile(s) -> [[d, y], ...]; uv(s, k, d, y) -> [u, v]
@@ -385,6 +386,7 @@ export function buildTrackMeshes(track, scene) {
   }
   group.add(gantry);
 
+  splitBigMeshes(group, 3000);
   scene.add(group);
   return { group, lights, lampMesh };
 }

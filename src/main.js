@@ -12,8 +12,9 @@ import { FX } from './particles.js';
 import { Sound } from './audio.js';
 import { Input } from './input.js';
 import { HUD, fmtTime } from './hud.js';
-import { setAnisotropy, checkerTex } from './textures.js';
+import { setAnisotropy, checkerTex, softDotTex } from './textures.js';
 import { renderSong } from './music.js';
+import { setCheapMaterials } from './optimize.js';
 
 const STEP = 1 / 120;
 const DIFF = {
@@ -44,8 +45,34 @@ function saveJSON(key, val) {
   try { localStorage.setItem(key, JSON.stringify(val)); } catch { /* sin almacenamiento */ }
 }
 
+// ¿Dibuja el procesador en vez de la tarjeta gráfica? (portátiles sin aceleración)
+function softwareGL() {
+  try {
+    const gl = document.createElement('canvas').getContext('webgl2') || document.createElement('canvas').getContext('webgl');
+    if (!gl) return true;
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    const name = String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER));
+    return /swiftshader|llvmpipe|softpipe|software|basic render/i.test(name);
+  } catch { return false; }
+}
+
+// Calidad gráfica: escala de resolución máxima y sombras
+const QUALITY = {
+  alta: { scale: 1.75, minScale: 0.8, shadows: 2, aa: true },
+  media: { scale: 1, minScale: 0.65, shadows: 1, aa: true },
+  baja: { scale: 0.7, minScale: 0.45, shadows: 0, aa: false, cheap: true },
+};
+const SOFTWARE = softwareGL();
+const BOOT_QUALITY = (() => {
+  let q = 'auto';
+  try { q = JSON.parse(localStorage.getItem('megamonstruos.ajustes') || '{}').quality || 'auto'; } catch { /* sin almacenamiento */ }
+  return q;
+})();
+const levelFor = (q) => (q === 'auto' ? (SOFTWARE ? 'baja' : 'alta') : q);
+
 function makeRenderer(canvas) {
-  const r = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+  const aa = QUALITY[levelFor(BOOT_QUALITY)].aa;
+  const r = new THREE.WebGLRenderer({ canvas, antialias: aa, powerPreference: 'high-performance' });
   const win = canvas.ownerDocument.defaultView || window;
   r.setPixelRatio(Math.min(win.devicePixelRatio || 1, 1.75));
   r.shadowMap.enabled = true;
@@ -103,6 +130,10 @@ class Game {
     this.obstacles = new Obstacles(this.track, this.scene, this);
     this.vehicles = TRUCKS.map((def) => new Vehicle(def, this.track));
     for (const v of this.vehicles) this.scene.add(v.mesh);
+    // sombra redonda bajo cada camión (cuando las sombras de verdad están apagadas)
+    const blobGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+    const blobMat = new THREE.MeshBasicMaterial({ map: softDotTex(), color: 0x000000, transparent: true, opacity: 0.55, depthWrite: false });
+    this.blobs = this.vehicles.map(() => { const m = new THREE.Mesh(blobGeo, blobMat.clone()); m.renderOrder = 1; m.visible = false; this.scene.add(m); return m; });
 
     // luces del túnel: faros del jugador y luz que "pasa" bajo las lámparas
     this.headlight = new THREE.SpotLight(0xfff4d0, 0, 90, 0.55, 0.5, 1.2);
@@ -121,16 +152,19 @@ class Game {
       this.rings.push({ mesh: m, t: 1 });
     }
 
-    this.settings = loadJSON('megamonstruos.ajustes', { truck: 0, truck2: 1, laps: 3, diff: 'normal', music: true, mode: 1, split: 'auto' });
+    this.settings = loadJSON('megamonstruos.ajustes', { truck: 0, truck2: 1, laps: 3, diff: 'normal', music: true, mode: 1, split: 'auto', quality: 'auto' });
     if (this.settings.truck2 === this.settings.truck) this.settings.truck2 = (this.settings.truck + 1) % TRUCKS.length;
     this.records = loadJSON('megamonstruos.records', {});
     this.sound.musicOn = this.settings.music;
     this.laps = this.settings.laps;
+    this.perf = { acc: 0, n: 0, fps: 60, scale: 1, shadows: -1 };
+    this.applyQuality(true);
     this.views = [];
     this.humans = [];
     this.win2 = null;
     this.renderer2 = null;
     this.buildShowroom();
+    setCheapMaterials(this.show.scene, !!this.qualityLevel().cheap);
     this.bindUI();
 
     this.state = 'title';
@@ -180,6 +214,10 @@ class Game {
     document.querySelectorAll('[data-diff]').forEach((b) => b.addEventListener('click', () => {
       this.sound.play('click'); this.settings.diff = b.dataset.diff; this.refreshOptions();
     }));
+    document.querySelectorAll('[data-quality]').forEach((b) => b.addEventListener('click', () => {
+      this.sound.play('click'); this.settings.quality = b.dataset.quality; this.applyQuality(true); this.refreshOptions();
+    }));
+    window.addEventListener('keydown', (e) => { if (e.code === 'KeyF' && !e.repeat) this.toggleFps(); });
     document.querySelectorAll('[data-split]').forEach((b) => b.addEventListener('click', () => {
       this.sound.play('click');
       if (b.dataset.split === 'window') {
@@ -203,6 +241,7 @@ class Game {
   refreshOptions() {
     document.querySelectorAll('[data-laps]').forEach((b) => b.classList.toggle('sel', +b.dataset.laps === this.settings.laps));
     document.querySelectorAll('[data-diff]').forEach((b) => b.classList.toggle('sel', b.dataset.diff === this.settings.diff));
+    document.querySelectorAll('[data-quality]').forEach((b) => b.classList.toggle('sel', b.dataset.quality === this.settings.quality));
     const useWin = this.settings.split === 'window' && this.win2Ready();
     document.querySelectorAll('[data-split]').forEach((b) => b.classList.toggle('sel', (b.dataset.split === 'window') === useWin));
     const fileMode = location.protocol === 'file:';
@@ -344,6 +383,9 @@ class Game {
 
   setupWindow2(w) {
     this.renderer2 = makeRenderer(w.document.getElementById('game'));
+    this.renderer2.setPixelRatio(this.perf.scale);
+    this.renderer2.shadowMap.enabled = this.perf.shadows > 0;
+    this.renderer2.shadowMap.type = this.perf.shadows === 2 ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
     this.envMap2 = new THREE.PMREMGenerator(this.renderer2).fromScene(new RoomEnvironment(), 0.04).texture;
     this.input.attach(w);
     w.addEventListener('resize', () => this.layoutViews());
@@ -766,11 +808,73 @@ class Game {
     }
   }
 
+  // ------------------------------------------------------------ calidad gráfica
+  qualityLevel() { return QUALITY[levelFor(this.settings.quality)]; }
+
+  applyQuality(reset) {
+    const q = this.qualityLevel();
+    const dpr = window.devicePixelRatio || 1;
+    if (reset) this.perf.scale = Math.min(dpr, q.scale);
+    this.perf.scale = Math.max(q.minScale, Math.min(Math.min(dpr, q.scale), this.perf.scale));
+    for (const r of [this.renderer, this.renderer2]) if (r) r.setPixelRatio(this.perf.scale);
+    if (reset) {
+      this.setShadows(q.shadows);
+      setCheapMaterials(this.scene, !!q.cheap);
+      if (this.show) setCheapMaterials(this.show.scene, !!q.cheap);
+    }
+    if (this.show) this.resize();
+  }
+
+  // 0 = sin sombras, 1 = sombras sencillas, 2 = sombras suaves
+  setShadows(level) {
+    if (this.perf.shadows === level) return;
+    const changed = this.perf.shadows !== -1 && (this.perf.shadows === 0) !== (level === 0);
+    this.perf.shadows = level;
+    for (const r of [this.renderer, this.renderer2]) {
+      if (!r) continue;
+      r.shadowMap.enabled = level > 0;
+      r.shadowMap.type = level === 2 ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+      r.shadowMap.needsUpdate = true;
+    }
+    this.world.setShadowSize(level === 2 ? 2048 : 1024);
+    // los materiales se recompilan para quitar o poner las sombras
+    if (changed) this.scene.traverse((o) => { if (o.material) for (const m of [].concat(o.material)) m.needsUpdate = true; });
+  }
+
+  // En «auto» la resolución sube o baja para mantener la partida fluida
+  adaptQuality(dt) {
+    const p = this.perf;
+    p.acc += dt; p.n++;
+    if (p.acc < 1.5) return;
+    p.fps = p.n / p.acc;
+    p.acc = 0; p.n = 0;
+    if (this.fpsEl) this.fpsEl.textContent = `${p.fps.toFixed(0)} fps · ${Math.round(p.scale * 100)}% · sombras ${['no', 'sí', 'suaves'][p.shadows]}`;
+    if (this.settings.quality !== 'auto' || !(this.state === 'race' || this.state === 'countdown' || this.state === 'title')) return;
+    const q = this.qualityLevel();
+    if (p.fps < 40) {
+      if (p.scale > q.minScale + 0.01) { p.scale = Math.max(q.minScale, p.scale * (p.fps < 25 ? 0.8 : 0.9)); this.applyQuality(false); }
+      else if (p.shadows > 0) this.setShadows(p.shadows - 1);
+    } else if (p.fps > 56 && p.scale < Math.min(window.devicePixelRatio || 1, q.scale) - 0.01) {
+      p.scale = Math.min(q.scale, p.scale * 1.06);
+      this.applyQuality(false);
+    }
+  }
+
+  toggleFps() {
+    if (this.fpsEl) { this.fpsEl.remove(); this.fpsEl = null; return; }
+    this.fpsEl = document.createElement('div');
+    this.fpsEl.id = 'fps';
+    this.fpsEl.textContent = '…';
+    document.body.appendChild(this.fpsEl);
+  }
+
   // ------------------------------------------------------------ bucle principal
   loop(now) {
     requestAnimationFrame((t) => this.loop(t));
-    const dt = Math.min(0.05, Math.max(0, (now - this.last) / 1000));
+    const raw = Math.max(0, (now - this.last) / 1000);
+    const dt = Math.min(0.05, raw);
     this.last = now;
+    this.adaptQuality(Math.min(raw, 0.5));
     this.frame(dt);
   }
 
@@ -1039,7 +1143,23 @@ class Game {
     cam.updateProjectionMatrix();
   }
 
+  updateBlobs() {
+    const on = this.perf.shadows === 0 && this.state !== 'title';
+    this.vehicles.forEach((v, i) => {
+      const b = this.blobs[i];
+      b.visible = on && v.mesh.visible && v.state !== 'fallen';
+      if (!b.visible) return;
+      const g = this.track.surfaceAt(v.s, v.d).h;
+      const air = Math.max(0, v.y - g);
+      const k = Math.max(0.35, 1 - air / 12);
+      b.position.set(v.x, g + 0.08, v.z);
+      b.scale.setScalar(6.5 * v.mesh.scale.x * (0.7 + 0.3 * k));
+      b.material.opacity = 0.55 * k;
+    });
+  }
+
   render(dt) {
+    this.updateBlobs();
     const r = this.renderer;
     if (this.state === 'select') {
       this.showSpin += dt;
