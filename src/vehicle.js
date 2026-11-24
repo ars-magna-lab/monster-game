@@ -121,6 +121,9 @@ export class Vehicle {
     } else if (it === 'wave') {
       game.shockwave(this);
       this.events.push({ type: 'wave' });
+    } else if (it === 'tire' || it === 'barrel' || it === 'rocket') {
+      game.projectiles.launch(it, this);
+      this.events.push({ type: it === 'rocket' ? 'rocket' : 'throw' });
     }
   }
 

@@ -62,6 +62,14 @@ export class AIDriver {
         this.laneTarget = Math.max(-ROAD_HALF + 2, Math.min(ROAD_HALF - 2, this.laneTarget));
       }
     }
+    // esquivar barriles y neumáticos que hay en la pista
+    for (const p of game.projectiles.list) {
+      if (p.kind === 'rocket' || p.owner === v) continue;
+      const ds = tr.ahead(v.s, p.s);
+      if (ds > 2 && ds < 30 && Math.abs(p.d - this.lane) < 3.5 && Math.random() < this.skill * 0.6) {
+        this.laneTarget = Math.max(-ROAD_HALF + 2, Math.min(ROAD_HALF - 2, p.d > 0 ? p.d - 5.5 : p.d + 5.5));
+      }
+    }
     const speed = Math.max(0, v.vF);
     const la = 9 + speed * 0.45;
     const want = this.laneAt(v.s + la);
@@ -99,6 +107,13 @@ export class AIDriver {
           }
         } else if (v.item === 'wave') {
           useItem = game.vehicles.some((o) => o !== v && o.state === 'ok' && Math.hypot(o.x - v.x, o.z - v.z) < 16);
+        } else if (v.item === 'tire') {
+          // alguien delante, en un carril parecido
+          useItem = game.vehicles.some((o) => o !== v && o.state === 'ok' && tr.ahead(v.s, o.s) < 45 && Math.abs(o.d - v.d) < 3.5);
+        } else if (v.item === 'barrel') {
+          useItem = game.vehicles.some((o) => o !== v && o.state === 'ok' && tr.ahead(o.s, v.s) < 30) || this.itemDelay < -6;
+        } else if (v.item === 'rocket') {
+          useItem = v.place > 1;
         }
       }
     } else {

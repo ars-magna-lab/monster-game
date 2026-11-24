@@ -8,6 +8,7 @@ import { TRUCKS, buildTruck, animateTruck } from './trucks.js';
 import { Vehicle, RADIUS } from './vehicle.js';
 import { AIDriver } from './ai.js';
 import { Obstacles } from './obstacles.js';
+import { Projectiles } from './projectiles.js';
 import { FX } from './particles.js';
 import { Sound } from './audio.js';
 import { Input } from './input.js';
@@ -25,6 +26,7 @@ const DIFF = {
 const PLAYER_MSG = {
   log: '¡TRONCO!', ball: '¡BOLAZO!', boom: '¡BOOM!', net: '¡ATRAPADO EN LA RED!', crush: '¡CRUNCH!',
   fallPit: '¡AL FOSO!', fallWater: '¡COCODRILOS!', waved: '¡ONDA EXPANSIVA!', nitro: '¡NITRO!', jump: '¡SUPERSALTO!',
+  tired: '¡NEUMATAZO!', barreled: '¡BARRILAZO!', rocketed: '¡COHETAZO!',
 };
 const ORDINAL = ['PRIMERO', 'SEGUNDO', 'TERCERO', 'CUARTO', 'QUINTO', 'SEXTO'];
 const KEYHINT = { solo: 'ESPACIO', p1: 'Q / ESPACIO', p2: 'INTRO' };
@@ -128,6 +130,7 @@ class Game {
     this.sound = new Sound();
     this.input = new Input();
     this.obstacles = new Obstacles(this.track, this.scene, this);
+    this.projectiles = new Projectiles(this.scene, this);
     this.vehicles = TRUCKS.map((def) => new Vehicle(def, this.track));
     for (const v of this.vehicles) this.scene.add(v.mesh);
     // sombra redonda bajo cada camión (cuando las sombras de verdad están apagadas)
@@ -474,6 +477,7 @@ class Game {
 
   // ------------------------------------------------------------ carrera
   setupRace(mode = this.settings.mode) {
+    this.projectiles.clear();
     const diff = DIFF[this.settings.diff] || DIFF.normal;
     this.laps = this.settings.laps;
     const L = this.track.length;
@@ -575,8 +579,12 @@ class Game {
 
   rollItem(v) {
     const t = (v.place - 1) / Math.max(1, this.vehicles.length - 1);
-    const w = { nitro: 0.42, jump: 0.36 - 0.14 * t, wave: 0.22 + 0.2 * t };
-    let r = Math.random() * (w.nitro + w.jump + w.wave);
+    // los de atrás reciben objetos más fuertes; el cohete nunca le toca al primero
+    const w = {
+      nitro: 0.26, jump: 0.2 - 0.08 * t, wave: 0.12 + 0.08 * t,
+      tire: 0.17, barrel: 0.18 - 0.1 * t, rocket: v.place > 1 ? 0.04 + 0.2 * t : 0,
+    };
+    let r = Math.random() * Object.values(w).reduce((a, b) => a + b, 0);
     for (const k of Object.keys(w)) { r -= w[k]; if (r <= 0) return k; }
     return 'nitro';
   }
@@ -702,6 +710,7 @@ class Game {
     for (const c of ctrls) c.item = false;
     this.collide();
     this.obstacles.update(dt, this.vehicles);
+    this.projectiles.update(dt);
     for (const v of this.vehicles) {
       if (v.state !== 'ok') continue;
       const limit = v.isPlayer && !this.autopilot ? 5 : 2.5;
@@ -782,6 +791,10 @@ class Game {
           case 'log': case 'ball': near('crash'); shake(0.7); break;
           case 'boom': shake(0.9); break;
           case 'waved': shake(0.5); break;
+          case 'tired': near('crash', 0.8); shake(0.6); break;
+          case 'barreled': case 'rocketed': shake(1); break;
+          case 'throw': near('throw'); break;
+          case 'rocket': near('rocket'); break;
           case 'net': near('net'); break;
           case 'crush': near('crunch', 0.9); shake(0.3); break;
           case 'fallPit': case 'fallWater': near('fall', 0.8); break;

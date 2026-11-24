@@ -50,12 +50,14 @@ Pantalla:
 
 ## Qué hay
 
-- Seis camiones con estadísticas distintas: Trituradora, Megalodón, Escorpión, Mamut, Relámpago y Dragón.
+- Seis camiones con forma, tamaño y estadísticas distintas: Trituradora, Megalodón, Escorpión, Mamut
+  (el más grande), Relámpago (el más pequeño) y Dragón.
 - Cuenta atrás con semáforo, cinco rivales controlados por el ordenador y 1, 3 o 5 vueltas.
 - Obstáculos: foso con rampa, troncos que ruedan de lado a lado, túnel oscuro, foso de cocodrilos
   (rampa o puente estrecho), la red que baja y atrapa, bolas de demolición, barro, baches,
   barriles explosivos y coches para aplastar.
-- Cajas sorpresa con tres objetos: nitro, supersalto y onda expansiva.
+- Cajas sorpresa con seis objetos: nitro, supersalto, onda expansiva, neumático loco (se lanza hacia
+  delante), barril explosivo (se deja detrás) y cohete buscador (va a por el de delante; nunca le toca al primero).
 - Récords guardados en el navegador.
 
 ## Desarrollo
@@ -73,5 +75,5 @@ node tools/music.mjs race 30 race.wav [drums,bass]     # renderiza la música (o
 Añade `?auto` a la URL para que el ordenador conduzca tu camión (sirve de demostración).
 
 Código en `src/`: `track.js` (trazado y alturas), `trackMesh.js` (mallas de la pista), `trucks.js`
-(camiones), `vehicle.js` (física), `ai.js` (rivales), `obstacles.js`, `world.js` (escenario),
+(camiones), `vehicle.js` (física), `ai.js` (rivales), `obstacles.js`, `projectiles.js` (objetos que se lanzan), `world.js` (escenario),
 `hud.js`, `audio.js` (sonido sintetizado), `music.js` (canciones), `optimize.js` (trucos de rendimiento), `main.js` (estados del juego y cámara).

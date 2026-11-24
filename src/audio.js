@@ -157,6 +157,14 @@ export class Sound {
       case 'finish':
         [523, 659, 784, 1046, 784, 1046].forEach((f, i) => this.osc('square', f, f, i === 5 ? 0.7 : 0.16, 0.18 * v, i * 0.14));
         break;
+      case 'throw':
+        this.noiseBurst(0.25, 0.4 * v, 'bandpass', 500, 1800, 1.5);
+        this.osc('triangle', 220, 440, 0.18, 0.2 * v);
+        break;
+      case 'rocket':
+        this.noiseBurst(1.2, 0.6 * v, 'bandpass', 1800, 600, 1.2);
+        this.osc('sawtooth', 300, 900, 0.6, 0.12 * v);
+        break;
       case 'click': this.osc('triangle', 600, 900, 0.07, 0.2 * v); break;
       case 'wrong': this.osc('square', 300, 200, 0.3, 0.15 * v); break;
     }
