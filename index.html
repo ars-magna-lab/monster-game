@@ -15,19 +15,6 @@
 
 <div id="loading">Cargando monstruos…</div>
 
-<!-- HUD de carrera -->
-<div id="hud" class="hidden">
-  <div id="hud-pos"><span id="pos-num">1</span><span id="pos-suf">º</span><small id="pos-total">/6</small></div>
-  <div id="hud-lap">VUELTA <b id="lap-num">1</b>/<span id="lap-total">3</span></div>
-  <ol id="ranking"></ol>
-  <div id="hud-time"><div id="time-total">0:00.00</div><div id="time-best"></div></div>
-  <div id="hud-item"><div id="item-slot"></div><div id="item-name"></div><small class="keyhint">ESPACIO</small></div>
-  <canvas id="minimap" width="220" height="220"></canvas>
-  <div id="hud-speed"><span id="speed-num">0</span><small>km/h</small><div id="boost-bar"><div id="boost-fill"></div></div></div>
-  <div id="hud-msg"></div>
-  <div id="hud-big"></div>
-  <div id="hud-hint"></div>
-</div>
 <button id="btn-pause" class="hidden" aria-label="Pausa">II</button>
 
 <!-- Controles táctiles -->
@@ -50,7 +37,10 @@
     <div class="logo-main">MONSTRUOS</div>
     <div class="logo-sub">Gran Premio del Barro</div>
   </div>
-  <button id="btn-play" class="big-btn">¡JUGAR!</button>
+  <div class="mode-row">
+    <button id="btn-play" class="big-btn sel">1 JUGADOR</button>
+    <button id="btn-play2" class="big-btn">2 JUGADORES</button>
+  </div>
   <div class="controls">
     <span><kbd>←</kbd><kbd>→</kbd> girar</span>
     <span><kbd>↑</kbd> acelerar</span>
@@ -73,6 +63,7 @@
   <button id="btn-prev" class="arrow left" aria-label="Anterior">◀</button>
   <button id="btn-next" class="arrow right" aria-label="Siguiente">▶</button>
   <div class="panel">
+    <div id="select-who" class="hidden">JUGADOR 1</div>
     <div id="truck-dots"></div>
     <div id="truck-name">Trituradora</div>
     <div id="truck-desc"></div>
@@ -85,6 +76,13 @@
         <button data-diff="facil">Fácil</button><button data-diff="normal">Normal</button><button data-diff="dificil">Difícil</button>
       </div>
     </div>
+    <div class="opts opt-screen2 hidden" id="opt-screen2">
+      <div class="opt"><span>Pantalla</span>
+        <button data-split="auto">Partida</button><button data-split="window">Jugador 2 en otra ventana</button>
+      </div>
+      <div class="note" id="screen2-note"></div>
+    </div>
+    <div id="select-keys" class="hidden"></div>
     <div id="truck-record"></div>
     <div class="row">
       <button id="btn-back" class="small-btn">Atrás</button>
@@ -113,6 +111,12 @@
     <button id="btn-change" class="small-btn">Cambiar camión</button>
     <button id="btn-menu" class="small-btn">Menú</button>
   </div>
+</div>
+
+<div id="screen2-wait">
+  <h2>JUGADOR 2</h2>
+  <p>Arrastra esta ventana al otro monitor y pulsa <b>F11</b> o haz clic aquí para verla a pantalla completa.</p>
+  <p>La carrera se ve aquí en cuanto empiece. Esta ventana se maneja desde la principal.</p>
 </div>
 
 <script src="dist/game.js"></script>

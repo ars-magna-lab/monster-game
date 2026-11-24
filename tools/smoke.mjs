@@ -52,9 +52,9 @@ if (mode === 'capturas' || mode === 'todo') {
       g.autopilot = true;
       const s = g.track.at(seg, rel);
       g.player.placeAt(s, 0, 28);
-      g.camYaw = g.player.th;
+      g.views[0].camYaw = g.player.th;
       const P = g.track.pointAt(s - 11);
-      g.camPos.set(P.x, g.player.y + 5, P.z);
+      g.views[0].camPos.set(P.x, g.player.y + 5, P.z);
     }, seg, rel);
     await wait(name === '09-salto' ? 700 : 1200);
     await shot(name);
@@ -139,6 +139,49 @@ if (mode === 'teclado' || mode === 'todo') {
   console.log(JSON.stringify(r));
   const ok = r.acelerando.v > r.inicio.v + 3 && r.girando.th !== r.acelerando.th && (r.nitro.boost > 0 || r.nitro.item === null) && r.pausa.state === 'paused' && r.sigue.state === 'race';
   console.log(ok ? 'Teclado: OK' : 'Teclado: FALLA');
+}
+
+if (mode === 'dos') {
+  const frames = async (n = 3) => {
+    const f0 = await page.evaluate(() => window.__mm.frames);
+    await page.waitForFunction((f) => window.__mm.frames >= f, { timeout: 60000 }, f0 + n);
+  };
+  const sp = () => page.evaluate(() => window.__mm.humans.map((h) => +h.speed.toFixed(1)));
+  await frames();
+  await page.click('#btn-play2');
+  await frames();
+  await page.keyboard.press('Enter');
+  await frames();
+  await shot('20-dos-seleccion-j2');
+  await page.keyboard.press('Enter');
+  await frames();
+  await page.evaluate(() => { window.__mm.countdown = 0.01; });
+  await frames();
+  const r = { humanos: await page.evaluate(() => window.__mm.humans.map((h) => h.def.name)) };
+  await page.keyboard.down('KeyW');
+  await frames(25);
+  r.soloJ1 = await sp();
+  await page.keyboard.up('KeyW');
+  await page.keyboard.down('ArrowUp');
+  await frames(25);
+  r.luegoJ2 = await sp();
+  await page.keyboard.up('ArrowUp');
+  await shot('21-dos-partida');
+  await page.setViewport({ width: 2560, height: 720 });
+  await frames(4);
+  await shot('22-dos-lado-a-lado');
+  await page.setViewport({ width: 1280, height: 720 });
+  r.carrera = await page.evaluate(() => {
+    const g = window.__mm;
+    g.settings.laps = 1; g.autopilot = true; g.startRace(); g.simulate(90);
+    return { state: g.state, fin: g.humans.map((h) => h.finished), places: g.humans.map((h) => h.finishPlace) };
+  });
+  await page.evaluate(() => { window.__mm.resultsT = 0.01; });
+  await frames(3);
+  await shot('23-dos-resultados');
+  console.log(JSON.stringify(r));
+  const ok = r.soloJ1[0] > 3 && r.soloJ1[1] < 1 && r.luegoJ2[1] > 3 && r.carrera.state === 'finished';
+  console.log(ok ? 'Dos jugadores: OK' : 'Dos jugadores: FALLA');
 }
 
 console.log(errors.length ? 'ERRORES:\n' + errors.join('\n') : 'Sin errores en consola');

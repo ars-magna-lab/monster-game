@@ -1,4 +1,26 @@
-// Teclado, mando y botones táctiles.
+// Teclado, mandos y botones táctiles, para uno o dos jugadores.
+//
+// Un jugador: flechas o WASD; Espacio/Mayús/E usa el objeto; cualquier mando.
+// Dos jugadores:
+//   J1: W A S D, objeto Q o Espacio, volver a la pista R, y el primer mando.
+//   J2: flechas, objeto Intro o Mayús derecha, volver a la pista Retroceso, y el segundo mando.
+
+const KEYMAP = {
+  solo: {
+    left: ['ArrowLeft', 'KeyA'], right: ['ArrowRight', 'KeyD'], gas: ['ArrowUp', 'KeyW'], brake: ['ArrowDown', 'KeyS'],
+    item: ['Space', 'ShiftLeft', 'ShiftRight', 'KeyE'], reset: ['KeyR'],
+  },
+  p1: {
+    left: ['KeyA'], right: ['KeyD'], gas: ['KeyW'], brake: ['KeyS'],
+    item: ['KeyQ', 'Space', 'ShiftLeft', 'KeyE'], reset: ['KeyR'],
+  },
+  p2: {
+    left: ['ArrowLeft'], right: ['ArrowRight'], gas: ['ArrowUp'], brake: ['ArrowDown'],
+    item: ['Enter', 'NumpadEnter', 'ShiftRight', 'ControlRight', 'Numpad0'], reset: ['Backspace', 'NumpadDecimal'],
+  },
+};
+
+const PAD_BUTTONS = { 0: 'A', 1: 'B', 2: 'X', 3: 'Y', 5: 'RB', 9: 'Start', 12: 'Up', 13: 'Down', 14: 'Left', 15: 'Right' };
 
 export class Input {
   constructor() {
@@ -6,13 +28,25 @@ export class Input {
     this.edges = new Set();
     this.touch = { left: false, right: false, gas: false, brake: false, item: false };
     this.prevPad = {};
-    window.addEventListener('keydown', (e) => {
-      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
+    this.windows = [];
+    this.attach(window);
+  }
+
+  // Escucha el teclado en otra ventana (la del jugador 2)
+  attach(win) {
+    if (this.windows.includes(win)) return;
+    this.windows.push(win);
+    win.addEventListener('keydown', (e) => {
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Backspace'].includes(e.code)) e.preventDefault();
       if (!this.keys.has(e.code)) this.edges.add(e.code);
       this.keys.add(e.code);
     });
-    window.addEventListener('keyup', (e) => this.keys.delete(e.code));
-    window.addEventListener('blur', () => this.keys.clear());
+    win.addEventListener('keyup', (e) => this.keys.delete(e.code));
+    win.addEventListener('blur', () => this.keys.clear());
+  }
+
+  detach(win) {
+    this.windows = this.windows.filter((w) => w !== win);
   }
 
   bindTouch(root) {
@@ -32,42 +66,54 @@ export class Input {
     return false;
   }
 
-  // Llamar una vez por fotograma, al final
   endFrame() { this.edges.clear(); }
 
-  pad() {
-    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-    for (const p of pads) if (p && p.connected) return p;
-    return null;
-  }
-
-  // Botones del mando como "flancos" (pulsado este fotograma)
-  padEdges() {
-    const p = this.pad();
-    const out = {};
-    if (!p) return out;
-    const map = { 0: 'PadA', 1: 'PadB', 2: 'PadX', 3: 'PadY', 5: 'PadRB', 9: 'PadStart', 12: 'PadUp', 13: 'PadDown', 14: 'PadLeft', 15: 'PadRight' };
-    for (const [i, name] of Object.entries(map)) {
-      const b = p.buttons[i];
-      const down = !!(b && b.pressed);
-      if (down && !this.prevPad[name]) this.edges.add(name);
-      this.prevPad[name] = down;
+  // Mandos conectados, en orden. Se consultan todas las ventanas porque
+  // el navegador solo da datos del mando a la ventana que tiene el foco.
+  pads() {
+    const best = new Map();
+    for (const w of this.windows) {
+      let list = [];
+      try { list = w.closed ? [] : (w.navigator.getGamepads ? w.navigator.getGamepads() : []); } catch { list = []; }
+      for (const p of list) {
+        if (!p || !p.connected) continue;
+        const prev = best.get(p.index);
+        if (!prev || p.timestamp > prev.timestamp) best.set(p.index, p);
+      }
     }
-    if (p.axes[0] < -0.6 && !this.prevPad.AxL) this.edges.add('PadLeft');
-    if (p.axes[0] > 0.6 && !this.prevPad.AxR) this.edges.add('PadRight');
-    this.prevPad.AxL = p.axes[0] < -0.6;
-    this.prevPad.AxR = p.axes[0] > 0.6;
-    return out;
+    return [...best.values()].sort((a, b) => a.index - b.index);
   }
 
-  drive() {
+  // Flancos de los botones: "PadA" (cualquier mando) y "PadA@0" (mando número 0)
+  padEdges() {
+    this.padList = this.pads();
+    this.padList.forEach((p, slot) => {
+      const mark = (name, down) => {
+        const key = name + '@' + slot;
+        if (down && !this.prevPad[key]) { this.edges.add('Pad' + name); this.edges.add('Pad' + name + '@' + slot); }
+        this.prevPad[key] = down;
+      };
+      for (const [i, name] of Object.entries(PAD_BUTTONS)) mark(name, !!p.buttons[i]?.pressed);
+      mark('Left', !!p.buttons[14]?.pressed || p.axes[0] < -0.6);
+      mark('Right', !!p.buttons[15]?.pressed || p.axes[0] > 0.6);
+    });
+  }
+
+  // Controles de un jugador. who: 'solo' | 'p1' | 'p2'
+  drive(who = 'solo') {
+    const map = KEYMAP[who];
     const k = this.keys;
+    const any = (codes) => codes.some((c) => k.has(c));
+    const isP1 = who !== 'p2';
     let steer = 0, throttle = 0, brake = 0;
-    if (k.has('ArrowLeft') || k.has('KeyA') || this.touch.left) steer -= 1;
-    if (k.has('ArrowRight') || k.has('KeyD') || this.touch.right) steer += 1;
-    if (k.has('ArrowUp') || k.has('KeyW') || this.touch.gas) throttle = 1;
-    if (k.has('ArrowDown') || k.has('KeyS') || this.touch.brake) brake = 1;
-    const p = this.pad();
+    if (any(map.left) || (isP1 && this.touch.left)) steer -= 1;
+    if (any(map.right) || (isP1 && this.touch.right)) steer += 1;
+    if (any(map.gas) || (isP1 && this.touch.gas)) throttle = 1;
+    if (any(map.brake) || (isP1 && this.touch.brake)) brake = 1;
+    const slot = who === 'p2' ? 1 : 0;
+    const pads = this.padList || [];
+    // en solitario vale cualquier mando
+    const p = who === 'solo' ? pads.find((q) => q.buttons.some((b) => b.pressed) || Math.abs(q.axes[0] || 0) > 0.15) || pads[0] : pads[slot];
     if (p) {
       const ax = p.axes[0] || 0;
       if (Math.abs(ax) > 0.15) steer = Math.max(-1, Math.min(1, steer + ax));
@@ -80,7 +126,9 @@ export class Input {
       if (lt > 0.05) brake = Math.max(brake, lt);
       if (p.buttons[1]?.pressed) brake = 1;
     }
-    const item = this.pressed('Space', 'ShiftLeft', 'ShiftRight', 'KeyE', 'TouchItem', 'PadX', 'PadRB');
-    return { steer, throttle, brake, item };
+    const padCodes = who === 'solo' ? ['PadX', 'PadRB'] : ['PadX@' + slot, 'PadRB@' + slot];
+    const item = this.pressed(...map.item, ...padCodes, ...(isP1 ? ['TouchItem'] : []));
+    const reset = this.pressed(...map.reset, who === 'solo' ? 'PadY' : 'PadY@' + slot);
+    return { steer, throttle, brake, item, reset };
   }
 }

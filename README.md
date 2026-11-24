@@ -24,6 +24,26 @@ y con botones táctiles en móvil o tableta.
 
 Truco: si aceleras justo después del «2» de la cuenta atrás, sales con turbo.
 
+## Dos jugadores
+
+En la portada, elige «2 JUGADORES». Cada uno elige su camión por turnos.
+
+| | Jugador 1 | Jugador 2 |
+| --- | --- | --- |
+| Conducir | W A S D | Flechas |
+| Objeto | Q o Espacio | Intro o Mayús derecha |
+| Volver a la pista | R | Retroceso |
+| Mando | el primero conectado | el segundo conectado |
+
+Pantalla:
+
+- **Partida** (funciona abriendo `index.html`): arriba/abajo; si la ventana es muy ancha (estirada
+  sobre dos monitores), se parte en izquierda/derecha.
+- **Jugador 2 en otra ventana** (para dos monitores, cada uno a pantalla completa): arranca el juego
+  con `npm start`, que abre `http://localhost:8080`, elige esa opción en la selección de camión,
+  arrastra la ventana nueva al segundo monitor y pulsa F11 en cada una. Desde `index.html` como
+  fichero no se puede: el navegador no deja que una ventana dibuje en otra.
+
 ## Qué hay
 
 - Seis camiones con estadísticas distintas: Trituradora, Megalodón, Escorpión, Mamut, Relámpago y Dragón.
@@ -38,9 +58,10 @@ Truco: si aceleras justo después del «2» de la cuenta atrás, sales con turbo
 
 ```bash
 npm install
+npm start         # servidor local en http://localhost:8080 (necesario para dos ventanas)
 npm run build     # compila src/ en dist/game.js
 npm run dev       # recompila al guardar
-npm test          # prueba de humo en Chrome sin interfaz (capturas en shots/ y carrera simulada)
+npm test          # prueba de humo (también: node tools/smoke.mjs dos|teclado|carrera) en Chrome sin interfaz (capturas en shots/ y carrera simulada)
 node tools/shot.mjs salida.png "g.startRace()" 2000   # captura de depuración
 ```
 

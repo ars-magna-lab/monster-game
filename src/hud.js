@@ -9,7 +9,6 @@ export const ITEM_SVG = {
 export const ITEM_NAME = { nitro: 'Nitro', jump: 'Supersalto', wave: 'Onda expansiva' };
 const ITEM_KEYS = Object.keys(ITEM_SVG);
 
-const $ = (id) => document.getElementById(id);
 
 export function fmtTime(t) {
   if (!isFinite(t)) return '--:--.--';
@@ -18,16 +17,39 @@ export function fmtTime(t) {
   return `${m}:${s.toFixed(2).padStart(5, '0')}`;
 }
 
+const TEMPLATE = `
+  <div class="h-pos"><span class="pos-num">1</span><span class="pos-suf">º</span><small class="pos-total">/6</small></div>
+  <div class="h-lap">VUELTA <b class="lap-num">1</b>/<span class="lap-total">3</span></div>
+  <ol class="ranking"></ol>
+  <div class="h-time"><div class="time-total">0:00.00</div><div class="time-best"></div></div>
+  <div class="h-item"><div class="item-slot"></div><div class="item-name"></div><small class="keyhint"></small></div>
+  <canvas class="minimap" width="220" height="220"></canvas>
+  <div class="h-speed"><span class="speed-num">0</span><small>km/h</small><div class="boost-bar"><div class="boost-fill"></div></div></div>
+  <div class="h-msg"></div>
+  <div class="h-big"></div>
+  <div class="h-hint"></div>
+  <div class="h-tag"></div>`;
+
 export class HUD {
-  constructor(game) {
+  // player: el vehículo de este jugador; doc/parent: dónde se dibuja (puede ser otra ventana)
+  constructor(game, player, { doc = document, parent = null, tag = '', keyhint = 'ESPACIO' } = {}) {
     this.game = game;
-    this.root = $('hud');
+    this.player = player;
+    this.doc = doc;
+    this.root = doc.createElement('div');
+    this.root.className = 'hud hidden';
+    this.root.innerHTML = TEMPLATE;
+    (parent || doc.body).appendChild(this.root);
+    const q = (c) => this.root.querySelector('.' + c);
     this.el = {
-      pos: $('pos-num'), posSuf: $('pos-suf'), posTotal: $('pos-total'), lap: $('lap-num'), lapTotal: $('lap-total'),
-      time: $('time-total'), best: $('time-best'), item: $('item-slot'), itemName: $('item-name'), speed: $('speed-num'),
-      boost: $('boost-fill'), msg: $('hud-msg'), big: $('hud-big'), ranking: $('ranking'), hint: $('hud-hint'),
+      pos: q('pos-num'), posTotal: q('pos-total'), lap: q('lap-num'), lapTotal: q('lap-total'),
+      time: q('time-total'), best: q('time-best'), item: q('item-slot'), itemBox: q('h-item'), itemName: q('item-name'), speed: q('speed-num'),
+      boost: q('boost-fill'), msg: q('h-msg'), big: q('h-big'), ranking: q('ranking'), hint: q('h-hint'), tag: q('h-tag'),
     };
-    this.map = $('minimap');
+    q('keyhint').textContent = keyhint;
+    this.el.tag.textContent = tag;
+    this.el.tag.classList.toggle('hidden', !tag);
+    this.map = q('minimap');
     this.mctx = this.map.getContext('2d');
     this.cache = {};
     this.msgT = 0;
@@ -36,6 +58,15 @@ export class HUD {
     this.rollIdx = 0;
     this.prepMap();
   }
+
+  // Coloca el HUD sobre su trozo de pantalla (fracciones 0..1)
+  place(x, y, w, h, pxW, pxH) {
+    const st = this.root.style;
+    st.left = x * 100 + '%'; st.top = y * 100 + '%'; st.width = w * 100 + '%'; st.height = h * 100 + '%';
+    this.root.classList.toggle('compact', pxW < 760 || pxH < 520);
+  }
+
+  remove() { this.root.remove(); }
 
   set(key, el, val, prop = 'textContent') {
     if (this.cache[key] === val) return;
@@ -58,7 +89,7 @@ export class HUD {
     const oz = pad + ((W - 2 * pad) - (maxZ - minZ) * sc) / 2;
     this.toMap = (x, z) => [ox + (x - minX) * sc, oz + (z - minZ) * sc];
     // fondo precalculado
-    const bg = document.createElement('canvas');
+    const bg = this.doc.createElement('canvas');
     bg.width = bg.height = W;
     const g = bg.getContext('2d');
     const path = (from, to, step = 3) => {
@@ -93,36 +124,38 @@ export class HUD {
     const W = this.map.width;
     g.clearRect(0, 0, W, W);
     g.drawImage(this.mapBg, 0, 0);
-    const vs = [...this.game.vehicles].sort((a, b) => (a.isPlayer ? 1 : 0) - (b.isPlayer ? 1 : 0));
+    const me = this.player;
+    const rank = (v) => (v === me ? 2 : v.isPlayer ? 1 : 0);
+    const vs = [...this.game.vehicles].sort((a, b) => rank(a) - rank(b));
     for (const v of vs) {
       const [x, y] = this.toMap(v.x, v.z);
       g.beginPath();
-      g.arc(x, y, v.isPlayer ? 7 : 5, 0, Math.PI * 2);
+      g.arc(x, y, v === me ? 7 : v.isPlayer ? 6 : 5, 0, Math.PI * 2);
       g.fillStyle = '#' + new THREE.Color(v.def.color).getHexString();
       g.fill();
       g.lineWidth = v.isPlayer ? 3 : 1.5;
-      g.strokeStyle = v.isPlayer ? '#fff' : '#111';
+      g.strokeStyle = v === me ? '#fff' : v.isPlayer ? (v.human === 1 ? '#3ca0ff' : '#ffcc00') : '#111';
       g.stroke();
     }
   }
 
   message(text, dur = 1.6, cls = '') {
     this.el.msg.textContent = text;
-    this.el.msg.className = 'show ' + cls;
+    this.el.msg.className = 'h-msg show ' + cls;
     this.msgT = dur;
   }
 
   big(text, dur = 0.9, cls = '') {
     this.el.big.textContent = text;
-    this.el.big.className = '';
+    this.el.big.className = 'h-big';
     void this.el.big.offsetWidth; // reinicia la animación
-    this.el.big.className = 'show ' + cls;
+    this.el.big.className = 'h-big show ' + cls;
     this.bigT = dur;
   }
 
   update(dt) {
     const game = this.game;
-    const p = game.player;
+    const p = this.player;
     if (!p) return;
     const n = game.vehicles.length;
     this.set('pos', this.el.pos, String(p.place));
@@ -146,26 +179,26 @@ export class HUD {
       }
       this.set('item', this.el.item, ITEM_SVG[ITEM_KEYS[this.rollIdx]], 'innerHTML');
       this.set('itemName', this.el.itemName, '...');
-      this.el.item.parentElement.classList.add('rolling');
+      this.el.itemBox.classList.add('rolling');
     } else {
-      this.el.item.parentElement.classList.remove('rolling');
+      this.el.itemBox.classList.remove('rolling');
       this.set('item', this.el.item, p.item ? ITEM_SVG[p.item] : '', 'innerHTML');
       this.set('itemName', this.el.itemName, p.item ? ITEM_NAME[p.item] : '');
-      this.el.item.parentElement.classList.toggle('ready', !!p.item);
+      this.el.itemBox.classList.toggle('ready', !!p.item);
     }
 
     // clasificación
     const order = [...game.vehicles].sort((a, b) => a.place - b.place);
-    const html = order.map((v) => `<li class="${v.isPlayer ? 'me' : ''}${v.finished ? ' done' : ''}"><i style="background:#${new THREE.Color(v.def.color).getHexString()}"></i>${v.place}. ${v.def.name}</li>`).join('');
+    const html = order.map((v) => `<li class="${v.isPlayer ? (v.human === 1 ? 'other' : 'me') : ''}${v.finished ? ' done' : ''}"><i style="background:#${new THREE.Color(v.def.color).getHexString()}"></i>${v.place}. ${v.def.name}</li>`).join('');
     this.set('ranking', this.el.ranking, html, 'innerHTML');
 
     if (this.msgT > 0) {
       this.msgT -= dt;
-      if (this.msgT <= 0) this.el.msg.className = '';
+      if (this.msgT <= 0) this.el.msg.className = 'h-msg';
     }
     if (this.bigT > 0) {
       this.bigT -= dt;
-      if (this.bigT <= 0) this.el.big.className = '';
+      if (this.bigT <= 0) this.el.big.className = 'h-big';
     }
     this.drawMap();
   }

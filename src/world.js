@@ -279,12 +279,14 @@ export function buildWorld(scene, track) {
   return {
     sun, hemi, sky,
     baseHemi: hemi.intensity, baseSun: sun.intensity,
-    update(dt, focus) {
-      time += dt;
-      // la sombra sigue al jugador
-      sun.target.position.set(focus.x, focus.y, focus.z);
-      sun.position.set(focus.x + 120, focus.y + 160, focus.z + 70);
+    // la zona con sombras sigue al jugador que se va a dibujar
+    focus(p) {
+      sun.target.position.set(p.x, p.y, p.z);
+      sun.position.set(p.x + 120, p.y + 160, p.z + 70);
       sun.target.updateMatrixWorld();
+    },
+    update(dt) {
+      time += dt;
       for (const f of flagMeshes) f.rotation.y += Math.sin(time * 3 + f.userData.phase) * 0.01;
       for (let i = 0; i < crowds.length; i++) {
         crowds[i].position.y += Math.sin(time * 9 + i * 1.7) * 0.006;
