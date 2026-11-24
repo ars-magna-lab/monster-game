@@ -13,6 +13,7 @@ import { Sound } from './audio.js';
 import { Input } from './input.js';
 import { HUD, fmtTime } from './hud.js';
 import { setAnisotropy, checkerTex } from './textures.js';
+import { renderSong } from './music.js';
 
 const STEP = 1 / 120;
 const DIFF = {
@@ -189,8 +190,12 @@ class Game {
     }));
     this.input.bindTouch($('touch'));
     this.isTouch = window.matchMedia('(pointer: coarse)').matches;
-    window.addEventListener('pointerdown', () => this.sound.init(), { once: true });
-    window.addEventListener('keydown', () => this.sound.init(), { once: true });
+    const firstGesture = () => {
+      this.sound.init();
+      if (this.state === 'title' || this.state === 'select') this.sound.musicStart(false);
+    };
+    window.addEventListener('pointerdown', firstGesture, { once: true });
+    window.addEventListener('keydown', firstGesture, { once: true });
     window.addEventListener('beforeunload', () => { if (this.win2 && !this.win2.closed) this.win2.close(); });
     this.refreshOptions();
   }
@@ -212,7 +217,7 @@ class Game {
   toggleMute() { this.sound.toggleMute(); this.refreshOptions(); }
 
   toggleMusic() {
-    this.sound.musicOn = !this.sound.musicOn;
+    this.sound.setMusicOn(!this.sound.musicOn);
     this.settings.music = this.sound.musicOn;
     this.refreshOptions();
   }
@@ -233,6 +238,7 @@ class Game {
 
   goTitle() {
     this.sound.engineStop();
+    this.sound.musicStart(false);
     this.state = 'title';
     this.setupRace(1);
     this.state = 'title';
@@ -575,7 +581,7 @@ class Game {
     }
     const view = this.viewOf(v);
     if (view) {
-      if (v.lap === this.laps) { view.hud.big('¡ÚLTIMA VUELTA!', 1.6, 'small'); this.sound.play('final'); }
+      if (v.lap === this.laps) { view.hud.big('¡ÚLTIMA VUELTA!', 1.6, 'small'); this.sound.play('final'); this.sound.musicTempo(1.1); }
       else { view.hud.big(`VUELTA ${v.lap}`, 1.2, 'small'); this.sound.play('lap'); }
     }
   }
@@ -600,6 +606,7 @@ class Game {
     if (this.state === 'finished') return;
     this.state = 'finished';
     this.resultsT = 3.2;
+    this.sound.musicStop();
   }
 
   showResults() {
@@ -634,6 +641,7 @@ class Game {
       return s;
     }).join('<br>');
     this.showScreen('results');
+    this.sound.musicStart(false);
     for (const v of this.views) if (v.external) v.hud.message(placeOf(v.player) === 1 ? '¡GANASTE!' : `¡${ORDINAL[placeOf(v.player) - 1]}!`, 1e9, 'warn');
   }
 
@@ -1117,6 +1125,25 @@ function bootScreen2() {
   document.addEventListener('dblclick', () => { document.documentElement.requestFullscreen?.().catch(() => {}); });
   window.__screen2Ready = true;
 }
+
+// Para pruebas: renderiza una canción y la devuelve como WAV en base64
+window.__renderSong = async (name, seconds = 30, mute = []) => {
+  const buf = await renderSong(name, seconds, 44100, mute);
+  const n = buf.length, ch = buf.numberOfChannels;
+  const view = new DataView(new ArrayBuffer(44 + n * ch * 2));
+  const w = (o, s) => { for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i)); };
+  w(0, 'RIFF'); view.setUint32(4, 36 + n * ch * 2, true); w(8, 'WAVEfmt ');
+  view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, ch, true);
+  view.setUint32(24, buf.sampleRate, true); view.setUint32(28, buf.sampleRate * ch * 2, true);
+  view.setUint16(32, ch * 2, true); view.setUint16(34, 16, true); w(36, 'data'); view.setUint32(40, n * ch * 2, true);
+  const data = [...Array(ch)].map((_, c) => buf.getChannelData(c));
+  let o = 44;
+  for (let i = 0; i < n; i++) for (let c = 0; c < ch; c++) { view.setInt16(o, Math.max(-1, Math.min(1, data[c][i])) * 32767, true); o += 2; }
+  const bytes = new Uint8Array(view.buffer);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+};
 
 function boot() {
   if (new URLSearchParams(location.search).has('pantalla2')) { bootScreen2(); return; }

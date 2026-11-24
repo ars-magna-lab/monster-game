@@ -63,10 +63,11 @@ npm run build     # compila src/ en dist/game.js
 npm run dev       # recompila al guardar
 npm test          # prueba de humo (también: node tools/smoke.mjs dos|teclado|carrera) en Chrome sin interfaz (capturas en shots/ y carrera simulada)
 node tools/shot.mjs salida.png "g.startRace()" 2000   # captura de depuración
+node tools/music.mjs race 30 race.wav [drums,bass]     # renderiza la música (opcional: instrumentos a silenciar)
 ```
 
 Añade `?auto` a la URL para que el ordenador conduzca tu camión (sirve de demostración).
 
 Código en `src/`: `track.js` (trazado y alturas), `trackMesh.js` (mallas de la pista), `trucks.js`
 (camiones), `vehicle.js` (física), `ai.js` (rivales), `obstacles.js`, `world.js` (escenario),
-`hud.js`, `audio.js` (sonido sintetizado), `main.js` (estados del juego y cámara).
+`hud.js`, `audio.js` (sonido sintetizado), `music.js` (canciones), `main.js` (estados del juego y cámara).

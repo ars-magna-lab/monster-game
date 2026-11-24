@@ -1,4 +1,33 @@
-// Sonido sintetizado con WebAudio: motor, efectos y una música sencilla.
+// Sonido sintetizado con WebAudio: motor, efectos y música.
+import { renderSong, songLoop, MUSIC_VERSION } from './music.js';
+
+// Caché de la música renderizada en IndexedDB (si el navegador la permite)
+function idb() {
+  return new Promise((res) => {
+    try {
+      const rq = indexedDB.open('megamonstruos', 1);
+      rq.onupgradeneeded = () => rq.result.createObjectStore('musica');
+      rq.onsuccess = () => res(rq.result);
+      rq.onerror = () => res(null);
+    } catch { res(null); }
+  });
+}
+async function cacheGet(key) {
+  const db = await idb();
+  if (!db) return null;
+  return new Promise((res) => {
+    try {
+      const rq = db.transaction('musica').objectStore('musica').get(key);
+      rq.onsuccess = () => res(rq.result || null);
+      rq.onerror = () => res(null);
+    } catch { res(null); }
+  });
+}
+async function cachePut(key, val) {
+  const db = await idb();
+  if (!db) return;
+  try { db.transaction('musica', 'readwrite').objectStore('musica').put(val, key); } catch { /* sin caché */ }
+}
 
 export class Sound {
   constructor() {
@@ -6,7 +35,6 @@ export class Sound {
     this.muted = false;
     this.musicOn = true;
     this.engine = null;
-    this.musicTimer = null;
     this.last = {};
   }
 
@@ -171,43 +199,85 @@ export class Sound {
     this.engine = null;
   }
 
-  // ---------- música: rock sencillo en bucle ----------
-  musicStart(intense = true) {
-    if (!this.ctx || this.musicTimer) return;
-    const bpm = intense ? 148 : 112;
-    const step = 60 / bpm / 4;
-    // Mi menor: Mi - Sol - La - Sol
-    const roots = [41.2, 49.0, 55.0, 49.0];
-    let n = 0;
-    let nextT = this.ctx.currentTime + 0.1;
-    const kick = [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0];
-    const snare = [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1];
-    const bass = [1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 1];
-    const lead = [0, 0, 7, 0, 5, 0, 7, 10, 12, 0, 10, 7, 5, 0, 3, 0];
-    this.musicTimer = setInterval(() => {
-      if (!this.ctx) return;
-      while (nextT < this.ctx.currentTime + 0.2) {
-        const i = n % 16, bar = Math.floor(n / 16) % 4;
-        const root = roots[bar];
-        const t0 = nextT - this.ctx.currentTime;
-        if (this.musicOn && !this.muted) {
-          if (kick[i]) this.osc('sine', 140, 40, 0.18, 0.9, t0, this.musicBus);
-          if (snare[i]) this.noiseBurst(0.14, 0.45, 'highpass', 1200, 1200, 0.7, t0, this.musicBus);
-          if (i % 2 === 0) this.noiseBurst(0.04, 0.12, 'highpass', 7000, 7000, 0.7, t0, this.musicBus);
-          if (bass[i]) this.osc('sawtooth', root * 2, root * 2, step * 0.9, 0.22, t0, this.musicBus);
-          if (intense && lead[i] && Math.floor(n / 64) % 2 === 1) {
-            const f = root * 8 * Math.pow(2, lead[i] / 12);
-            this.osc('square', f, f, step * 1.6, 0.06, t0, this.musicBus);
-          }
+  // ---------- música (ver music.js) ----------
+  // Cada tema se renderiza una vez en segundo plano y después suena en bucle:
+  // así la música casi no gasta CPU durante la carrera.
+  prepareMusic() {
+    if (this.songs || !this.ctx || typeof OfflineAudioContext === 'undefined') return;
+    this.songs = {};
+    const rate = 32000;
+    const load = async (name) => {
+      const lp = songLoop(name);
+      const key = `${name}-v${MUSIC_VERSION}-${rate}`;
+      try {
+        let buf;
+        const hit = await cacheGet(key);
+        if (hit && hit.ch?.length === 2) {
+          buf = this.ctx.createBuffer(2, hit.ch[0].length, hit.rate);
+          hit.ch.forEach((d, c) => buf.copyToChannel(d, c));
+        } else {
+          buf = await renderSong(name, lp.seconds, rate);
+          cachePut(key, { rate, ch: [buf.getChannelData(0).slice(), buf.getChannelData(1).slice()] });
         }
-        nextT += step;
-        n++;
-      }
-    }, 50);
+        this.songs[name] = { buf, ...lp };
+      } catch { return; }
+      if (this.wantSong === name && !this.musicSrc) this.playSong(name);
+    };
+    load('menu').then(() => load('race'));
+  }
+
+  playSong(name) {
+    const song = this.songs?.[name];
+    this.wantSong = name;
+    if (this.currentSong === name && this.musicSrc) return;
+    this.stopSong();
+    if (!song) return;
+    const src = this.ctx.createBufferSource();
+    src.buffer = song.buf;
+    src.loop = true;
+    src.loopStart = song.loopStart;
+    src.loopEnd = song.loopEnd;
+    const g = this.ctx.createGain();
+    const t = this.ctx.currentTime;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(1, t + 0.4);
+    src.connect(g).connect(this.musicBus);
+    src.start(t + 0.02);
+    this.musicSrc = src; this.musicGain = g; this.currentSong = name;
+  }
+
+  stopSong() {
+    if (!this.musicSrc) return;
+    const { musicSrc: src, musicGain: g } = this;
+    const t = this.ctx.currentTime;
+    g.gain.cancelScheduledValues(t);
+    g.gain.setValueAtTime(g.gain.value, t);
+    g.gain.linearRampToValueAtTime(0, t + 0.3);
+    try { src.stop(t + 0.32); } catch { /* ya parado */ }
+    this.musicSrc = null; this.currentSong = null;
+  }
+
+  musicStart(intense = true) {
+    if (!this.ctx) return;
+    this.prepareMusic();
+    this.musicBus.gain.setTargetAtTime(this.musicOn ? (intense ? 0.34 : 0.26) : 0, this.ctx.currentTime, 0.1);
+    this.playSong(intense ? 'race' : 'menu');
+    this.musicTempo(1);
+  }
+
+  // Última vuelta: un poco más rápida (y algo más aguda, como un disco acelerado)
+  musicTempo(mul) {
+    if (this.musicSrc) this.musicSrc.playbackRate.setTargetAtTime(mul, this.ctx.currentTime, 0.3);
   }
 
   musicStop() {
-    if (this.musicTimer) clearInterval(this.musicTimer);
-    this.musicTimer = null;
+    this.wantSong = null;
+    this.stopSong();
+  }
+
+  // Encender o apagar la música sin perder la posición
+  setMusicOn(on) {
+    this.musicOn = on;
+    if (this.musicBus) this.musicBus.gain.setTargetAtTime(on ? 0.3 : 0, this.ctx.currentTime, 0.1);
   }
 }

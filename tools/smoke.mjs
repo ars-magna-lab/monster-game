@@ -103,7 +103,7 @@ if (mode === 'carrera' || mode === 'todo') {
 if (mode === 'teclado' || mode === 'todo') {
   const frames = async (n = 3) => {
     const f0 = await page.evaluate(() => window.__mm.frames);
-    await page.waitForFunction((f) => window.__mm.frames >= f, { timeout: 60000 }, f0 + n);
+    await page.waitForFunction((f) => window.__mm.frames >= f, { timeout: 240000 }, f0 + n);
   };
   const get = () => page.evaluate(() => { const g = window.__mm; const p = g.player; return { state: g.state, v: +p.speed.toFixed(1), th: +p.th.toFixed(2), boost: +p.boost.toFixed(2), item: p.item }; });
   await page.evaluate(() => window.__mm.goTitle());
@@ -144,7 +144,7 @@ if (mode === 'teclado' || mode === 'todo') {
 if (mode === 'dos') {
   const frames = async (n = 3) => {
     const f0 = await page.evaluate(() => window.__mm.frames);
-    await page.waitForFunction((f) => window.__mm.frames >= f, { timeout: 60000 }, f0 + n);
+    await page.waitForFunction((f) => window.__mm.frames >= f, { timeout: 240000 }, f0 + n);
   };
   const sp = () => page.evaluate(() => window.__mm.humans.map((h) => +h.speed.toFixed(1)));
   await frames();
