@@ -42,7 +42,10 @@ Para jugar en la tele: conecta el ordenador por HDMI y pulsa el botón de pantal
 Si el juego va a tirones, elige «Gráficos: Baja» en la elección de camión. En «Auto» (por defecto) el juego
 detecta si el ordenador no tiene aceleración gráfica y baja la resolución y las sombras él solo.
 
-Truco: si aceleras justo después del «2» de la cuenta atrás, sales con turbo.
+La salida: la cámara da una vuelta rápida al camión y después empieza la cuenta 3, 2, 1, ¡YA! Acelera justo
+cuando salga el «2» para una salida perfecta (turbo largo); si aceleras más tarde, pero antes del «¡YA!», sales
+con un turbo corto. Si aceleras antes del «2», el humo se vuelve negro y el motor se ahoga: te quedas un momento
+parado. A los rivales también les pasa de vez en cuando.
 
 ## Dos jugadores
 
@@ -78,12 +81,14 @@ terminan el campeonato. Se guardan las copas ganadas y la mejor puntuación. Val
   - **Valle Monstruo** (1,9 km): el original, con fosos, troncos, bolas de demolición y cocodrilos.
   - **Pico Helado** (2,5 km): rápido y resbaladizo. Un lago helado lleno de muñecos de nieve, bolas de nieve
     gigantes, un gran salto sobre una grieta de agua helada y una cueva de hielo.
-  - **Volcán Rugiente** (2,7 km): el más largo. Tres fosos de lava, rocas rodantes y un túnel largo con
-    barriles que estallan en cadena.
+  - **Volcán Rugiente** (2,7 km): el más largo. Tres fosos de lava, rocas rodantes, un túnel largo con
+    barriles que estallan en cadena y una recta con lluvia de rocas de fuego: cada una avisa con una diana en
+    el suelo antes de caer.
   - **Selva Salvaje** (1,7 km): el más corto y revirado, con mucho barro. Un río con dos puentes colgantes
     (hay que elegir uno), troncos colgantes, dos redes y un templo.
-  - **Gran Ciudad** (2,4 km): esquinas de 90° y avenidas largas con muchos turbos, una zona de obras con
-    tuberías y barriles, coches para aplastar y una alcantarilla con cocodrilos.
+  - **Gran Ciudad** (2,4 km): esquinas de 90° y avenidas largas con muchos turbos, dos cruces con tráfico
+    que atraviesa la pista (hay que colarse por un hueco), una zona de obras con tuberías y barriles, coches
+    para aplastar y una alcantarilla con cocodrilos.
 
 - Seis camiones con forma, tamaño y estadísticas distintas: Trituradora, Megalodón, Escorpión, Mamut
   (el más grande), Relámpago (el más pequeño) y Dragón.
@@ -112,6 +117,7 @@ npm run test:pista        # comprueba que el suelo no tapa la pista al dibujar s
 npm run test:memoria      # comprueba que cambiar de circuito no acumula memoria
 node tools/mando.mjs      # prueba los menús con un mando simulado
 node tools/copa.mjs       # corre un campeonato entero con piloto automático
+node tools/salida.mjs     # prueba la salida: motor ahogado, salida perfecta y cámara sin tirones
 node tools/circuits.mjs --medir --carreras 3 --vueltas 2 --dif normal   # cómo se defiende la IA y equilibrio de objetos
 ```
 
