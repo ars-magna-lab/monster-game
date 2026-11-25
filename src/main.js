@@ -243,12 +243,19 @@ class Game {
     }
   }
 
+  // Los récords van por circuito y por revisión del trazado (rev > 1: claves nuevas, los
+  // récords del trazado antiguo no se mezclan). Valle Monstruo conserva sus claves de siempre.
+  circuitTag() {
+    const c = this.circuit;
+    return c.id + (c.rev > 1 ? '@' + c.rev : '');
+  }
+
   recordKey(defId, laps) {
-    return (this.circuit.id === 'clasico' ? '' : this.circuit.id + '_') + defId + '_' + laps;
+    return (this.circuit.id === 'clasico' ? '' : this.circuitTag() + '_') + defId + '_' + laps;
   }
 
   lapRecordKey() {
-    return this.circuit.id === 'clasico' ? 'vuelta' : 'vuelta_' + this.circuit.id;
+    return this.circuit.id === 'clasico' ? 'vuelta' : 'vuelta_' + this.circuitTag();
   }
 
   get player() { return this.humans[0]; }
@@ -1164,7 +1171,7 @@ class Game {
           case 'scrape': near('scrape', clamp(e.v / 12, 0.2, 0.8)); this.fx.sparks(v.x, v.y + 1.2, v.z, 4); break;
           case 'wall': near('bump', 0.6); break;
         }
-        const msg = e.type === 'fallWater' ? pitText(this.track.theme, e.liquid) : e.type === 'log' ? this.track.theme.rollerHit : PLAYER_MSG[e.type];
+        const msg = e.type === 'fallWater' ? pitText(this.track.theme, e.liquid) : e.type === 'log' ? this.track.theme.rollerHit : e.type === 'ball' ? this.track.theme.ballHit || PLAYER_MSG.ball : PLAYER_MSG[e.type];
         if (view && msg) {
           const big = ['fallPit', 'fallWater', 'net', 'ball', 'boom', 'rocketWarn'].includes(e.type);
           view.hud.message(msg, big ? 1.6 : 1.0, big ? 'warn' : '');

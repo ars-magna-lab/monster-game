@@ -112,6 +112,7 @@ export function buildTrackMeshes(track, scene) {
   }
 
   // ---------- Fosos ----------
+  let lavaLights = 0;
   const pitWallMat = new THREE.MeshStandardMaterial({ map: T.dirtTex(), roughness: 1, side: THREE.DoubleSide, color: 0x9c8a7a });
   for (const p of track.pits) {
     const rows = rowsBetween(track, p.s0, p.s1);
@@ -148,8 +149,8 @@ export function buildTrackMeshes(track, scene) {
         strip(track, rows, () => [[-LIMIT, p.floor], [LIMIT, p.floor]], (s, k, d) => [d / 10, s / 10]),
         mat,
       );
-      if (lava) {
-        // resplandor de la lava
+      if (lava && lavaLights++ < 2) {
+        // resplandor de la lava (como mucho dos luces por circuito: cada luz encarece todo el dibujo)
         const glow = new THREE.PointLight(0xff6a20, 900, 60, 1.6);
         const M = track.pointAt((p.s0 + p.s1) / 2);
         glow.position.set(M.x, p.top + 4, M.z);
@@ -211,10 +212,10 @@ export function buildTrackMeshes(track, scene) {
     group.add(edge);
   }
 
-  // ---------- Puente del foso de cocodrilos ----------
-  for (const p of track.pits) {
-    if (!p.bridge) continue;
-    const [b0, b1] = p.bridge;
+  // ---------- Puentes sobre los fosos (0, 1 o 2 por foso) ----------
+  const plankMat = new THREE.MeshStandardMaterial({ map: T.planksTex(), color: 0xb08a5a, roughness: 0.9 });
+  const ropeMat = new THREE.MeshStandardMaterial({ color: 0xd9c08a, side: THREE.DoubleSide });
+  for (const p of track.pits) for (const [b0, b1] of p.bridges) {
     const geos = [];
     const r = mulberry(3);
     for (let s = p.s0 - 0.5; s < p.s1 + 0.5; s += 0.9) {
@@ -232,7 +233,7 @@ export function buildTrackMeshes(track, scene) {
         geos.push(g);
       }
     }
-    const plank = new THREE.Mesh(mergeGeometries(geos), new THREE.MeshStandardMaterial({ map: T.planksTex(), color: 0xb08a5a, roughness: 0.9 }));
+    const plank = new THREE.Mesh(mergeGeometries(geos), plankMat);
     plank.castShadow = true; plank.receiveShadow = true;
     group.add(plank);
     // cuerdas
@@ -243,7 +244,26 @@ export function buildTrackMeshes(track, scene) {
         const y = p.top + 1.6 - Math.sin(t * Math.PI) * 0.5;
         return [[d, y], [d, y + 0.12]];
       }, (s, k) => [s, k]);
-      group.add(new THREE.Mesh(rope, new THREE.MeshStandardMaterial({ color: 0xd9c08a, side: THREE.DoubleSide })));
+      group.add(new THREE.Mesh(rope, ropeMat));
+    }
+  }
+
+  // ---------- Lagos helados: hielo de barrera a barrera ----------
+  for (const k of track.lakes) {
+    const rows = rowsBetween(track, k.s0, k.s1).filter((_, i, a) => i % 3 === 0 || i === a.length - 1);
+    const it = T.waterTex().clone();
+    it.needsUpdate = true;
+    const ice = new THREE.Mesh(
+      strip(track, rows, (s) => { const h = track.baseAt(s) + 0.05; return [[-LIMIT, h], [0, h], [LIMIT, h]]; }, (s, c, d) => [d / 14, s / 14]),
+      new THREE.MeshStandardMaterial({ map: it, color: 0xeaf7ff, roughness: 0.12, metalness: 0.15, transparent: true, opacity: 0.9, depthWrite: false }),
+    );
+    ice.renderOrder = 1;
+    ice.receiveShadow = true;
+    group.add(ice);
+    for (const side of [-1, 1]) {
+      const sign = makeSign(k.name || '¡LAGO HELADO!', '#2a6fdb');
+      placeOnTrack(sign, track, k.s0 - 25, side * (LIMIT + 3), track.baseAt(k.s0 - 25));
+      group.add(sign);
     }
   }
 

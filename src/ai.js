@@ -1,5 +1,5 @@
 // Pilotos controlados por el ordenador.
-import { ROAD_HALF } from './track.js';
+import { ROAD_HALF, LIMIT } from './track.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
 const wrapAng = (a) => {
@@ -22,17 +22,41 @@ export class AIDriver {
     this.noiseT = 0;
     this.rollerTry = null;
     this.rollerBest = null;
+    this.pitPick = null; // foso y carril elegidos para cruzarlo
+    this.careful = false; // cruzando un puente estrecho: sin titubeos y sin correr tanto
+  }
+
+  // Carriles por los que se puede cruzar un foso (puentes y rampas que no ocupan todo el ancho).
+  // null si hay rampa de lado a lado: se cruza por cualquier sitio.
+  pitLanes(p) {
+    if (p.aiLanes !== undefined) return p.aiLanes;
+    const ramps = this.track.ramps.filter((r) => Math.abs(r.s1 - p.s0) < 1.5);
+    if (ramps.some((r) => r.d0 <= -ROAD_HALF && r.d1 >= ROAD_HALF)) return (p.aiLanes = null);
+    const lanes = p.bridges.map(([a, b]) => ({ d: (a + b) / 2, w: b - a, bridge: true }));
+    for (const r of ramps) {
+      const d = r.d0 <= -LIMIT ? r.d1 - 8 : r.d1 >= LIMIT ? r.d0 + 8 : (r.d0 + r.d1) / 2;
+      lanes.push({ d, w: Math.min(r.d1, ROAD_HALF) - Math.max(r.d0, -ROAD_HALF), bridge: false });
+    }
+    return (p.aiLanes = lanes.length ? lanes : null);
   }
 
   laneAt(s) {
     const tr = this.track;
-    // foso de cocodrilos: por el puente o por la rampa
+    // fosos con puente o rampa a un lado: elige por dónde cruzar y no lo cambia hasta pasarlo
     for (const p of tr.pits) {
-      if (!p.bridge) continue;
+      const lanes = this.pitLanes(p);
+      if (!lanes) continue;
       const before = tr.ahead(s, p.s0);
       const after = tr.ahead(p.s1, s);
       if (before < 110 || after < 6) {
-        return this.preferBridge ? (p.bridge[0] + p.bridge[1]) / 2 : -5;
+        if (this.pitPick?.p !== p) {
+          let cands = lanes.filter((l) => l.bridge === this.preferBridge);
+          if (!cands.length) cands = lanes;
+          let best = cands[0];
+          for (const l of cands) if (Math.abs(l.d - this.lane) < Math.abs(best.d - this.lane)) best = l;
+          this.pitPick = { p, lane: best.d, narrow: best.w < 8 };
+        }
+        return this.pitPick.lane;
       }
     }
     // charcos de barro: esquivarlos si se puede
@@ -73,17 +97,21 @@ export class AIDriver {
       }
     }
     const speed = Math.max(0, v.vF);
-    const la = 9 + speed * 0.45;
+    // puente estrecho delante o debajo: va derecho a su carril, sin titubeos y sin correr tanto
+    const pk = this.pitPick;
+    this.careful = !!pk?.narrow && (tr.ahead(v.s, pk.p.s0) < 70 || tr.ahead(pk.p.s0, v.s) < pk.p.s1 - pk.p.s0 + 2);
+    const la = this.careful ? 7 + speed * 0.3 : 9 + speed * 0.45;
     const rl = this.rollerLane(game, speed);
     const want = rl ?? this.laneAt(v.s + la);
-    this.lane += (want - this.lane) * Math.min(1, dt * (rl === null ? 1.2 : 3));
+    this.lane += (want - this.lane) * Math.min(1, dt * (rl === null && !this.careful ? 1.2 : 3));
     const P = tr.pointAt(v.s + la, this.lane);
     this.noiseT -= dt;
     if (this.noiseT <= 0) { this.noiseT = rand(0.3, 1.2); this.noise = rand(-0.12, 0.12) / this.skill; }
     const target = Math.atan2(P.z - v.z, P.x - v.x);
     const err = wrapAng(target - v.th);
-    let steer = Math.max(-1, Math.min(1, err * 2.6 + this.noise));
+    let steer = Math.max(-1, Math.min(1, err * 2.6 + (this.careful ? 0 : this.noise)));
     let throttle = 1, brake = 0;
+    if (this.careful && speed > 27) { throttle = 0; brake = speed > 31 ? 0.5 : 0; }
     if (Math.abs(err) > 1.7) {
       // mirando al revés: marcha atrás girando
       throttle = 0; brake = 1; steer = -Math.sign(err);
@@ -106,7 +134,7 @@ export class AIDriver {
           if (!useItem) {
             for (const p of tr.pits) {
               const toEnd = tr.ahead(v.s, p.s0);
-              if (toEnd < 6 && v.onGround && speed < 24 && Math.abs(v.d - (p.bridge ? (p.bridge[0] + p.bridge[1]) / 2 : 99)) > 3) useItem = true;
+              if (toEnd < 6 && v.onGround && speed < 24 && !p.bridges.some(([a, b]) => v.d > a - 0.5 && v.d < b + 0.5)) useItem = true;
             }
           }
         } else if (v.item === 'wave') {
@@ -136,7 +164,8 @@ export class AIDriver {
       return { o, ds, reach: o.len / 2 + 2.6 };
     }).filter((z) => z.ds > -z.reach && z.ds < 80);
     if (!zone.length) { this.rollerTry = null; return null; }
-    if (this.rollerTry == null) this.rollerTry = Math.random() < 0.5 * this.skill;
+    // las bolas grandes (nieve, rocas) se ven venir de lejos: se intenta esquivarlas más a menudo
+    if (this.rollerTry == null) this.rollerTry = Math.random() < 0.5 * this.skill * (zone[0].o.ball ? 1.5 : 1);
     if (!this.rollerTry) return null;
     const sp = Math.max(speed, 10);
     let best = null, bestCost = Infinity;

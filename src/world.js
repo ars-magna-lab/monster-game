@@ -368,6 +368,7 @@ export function buildWorld(scene, track) {
     const outer = g.ang > 0 ? -1 : 1;
     for (let t = 6; t < g.length - 4; t += 4.5) {
       const s = g.s0 + t;
+      if (track.inTunnel(s)) continue; // dentro de la montaña no se verían
       const P = track.pointAt(s, outer * (LIMIT + 1.9));
       for (let k = 0; k < 3; k++) {
         const tg = tireGeo.clone();
