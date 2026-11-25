@@ -127,7 +127,7 @@ export class Track {
   buildFeatures() {
     const f = this.circuit.features((k, rel) => this.at(k, rel), LIMIT);
     // listas vacías por defecto: cada circuito pone solo lo que usa
-    Object.assign(this, { plateaus: [], whoops: [], ramps: [], pits: [], mud: [], lakes: [], reserved: [], meteors: [], crossings: [], waves: [], legs: [] }, f);
+    Object.assign(this, { plateaus: [], whoops: [], ramps: [], pits: [], mud: [], lakes: [], reserved: [], meteors: [], crossings: [], waves: [], legs: [], rex: [] }, f);
     this.time = 0; // reloj de las olas (lo avanza Obstacles.update)
     // centro de cada cruce (los coches pasan por ahí) y hueco de la barrera, ajustado a las muestras
     for (const c of this.crossings) {

@@ -39,9 +39,10 @@ export class Obstacles {
     this.buildRain();
     this.buildTraffic();
     // olas (Bahía Pirata) y saurópodo (Cañón Jurásico)
-    this.waveZones = []; this.legs = [];
+    this.waveZones = []; this.legs = []; this.rex = [];
     this.buildWaves();
     this.buildLegs();
+    this.buildRex();
     // lo que la IA esquiva eligiendo carril (rodillos y tráfico: misma cuenta en rollerD)
     this.dodge = [...this.logs, ...this.traffic];
   }
@@ -538,6 +539,7 @@ export class Obstacles {
     this.updateTraffic(dt, vehicles);
     this.updateWaves(dt, vehicles);
     this.updateLegs(dt, vehicles);
+    this.updateRex(dt, vehicles);
   }
 
   // ---------- Lluvia de rocas de fuego (volcán) ----------
@@ -987,6 +989,148 @@ export class Obstacles {
     }
   }
 
+  // ---------- Tiranosaurios (Cañón Jurásico) ----------
+  // De pie por fuera de la barrera, mirando a la pista. Cada REX.every s baja la cabeza a morder
+  // la mitad del camino de su lado: antes avisa REX.warn s (ruge, abre la boca y aparece la marca
+  // en el suelo) y el mordisco dura REX.bite s. La otra mitad del camino es siempre segura.
+  buildRex() {
+    const tr = this.track;
+    if (!tr.rex.length) return;
+    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, flatShading: true });
+    const G = rexGeo();
+    const decal = { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 };
+    const fillGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+    const W = REX.dMax + REX.dMin, Lz = 2 * REX.half;
+    const edgeMat = new THREE.MeshBasicMaterial({ color: 0xffd000, ...decal });
+    this.rexEdge = edgeMat;
+    tr.rex.forEach((R, i) => {
+      const h = this.holder(R.s);
+      // el bicho (x local hacia la pista: en el lado izquierdo se gira media vuelta)
+      const root = new THREE.Group();
+      root.position.x = -R.side * REX.hipD;
+      if (R.side < 0) root.rotation.y = Math.PI;
+      const body = new THREE.Mesh(G.body, mat);
+      const upper = new THREE.Group(); upper.position.set(0, REX.hipY, 0);
+      const torso = new THREE.Mesh(G.upper, mat);
+      const head = new THREE.Group(); head.position.set(...REX.neck);
+      const skull = new THREE.Mesh(G.head, mat);
+      const jaw = new THREE.Group(); jaw.position.set(0.3, -0.9, 0);
+      jaw.add(new THREE.Mesh(G.jaw, mat));
+      head.add(skull, jaw);
+      upper.add(torso, head);
+      root.add(body, upper);
+      for (const m of [body, torso, skull]) m.castShadow = true;
+      h.add(root);
+      // marca del mordisco en la mitad del camino de su lado: rojo que se llena y borde amarillo
+      const mark = new THREE.Group();
+      mark.position.set(-R.side * (REX.dMax - REX.dMin) / 2, 0.09, 0);
+      const fillMat = new THREE.MeshBasicMaterial({ color: 0xd42000, transparent: true, opacity: 0.75, depthWrite: false, ...decal });
+      const fill = new THREE.Mesh(fillGeo, fillMat);
+      for (const [w, l, x, z] of [[W, 0.8, 0, Lz / 2 - 0.4], [W, 0.8, 0, -Lz / 2 + 0.4], [0.8, Lz, W / 2 - 0.4, 0], [0.8, Lz, -W / 2 + 0.4, 0]]) {
+        const e = new THREE.Mesh(fillGeo, edgeMat);
+        e.scale.set(w, 1, l); e.position.set(x, 0, z);
+        mark.add(e);
+      }
+      mark.add(fill);
+      mark.visible = false;
+      h.add(mark);
+      Object.assign(R, {
+        root, upper, head, jaw, mark, fill, fillMat, W, Lz, snapped: false,
+        // desfase entre los dos para que no muerdan a la vez
+        phase: 'idle', t: 0, wait: 1 + i * 2.2, hitDone: new Set(),
+      });
+      if (R.sign !== undefined) this.signs('¡TIRANOSAURIO!', '#ff7a2a', R.sign);
+      this.rex.push(R);
+    });
+  }
+
+  // ¿Le pilla el mordisco de R a un camión en (s, d)? (zona del mordisco, con el tamaño del camión)
+  rexZone(R, s, d, size = 1) {
+    return Math.abs(this.rel(s, R.s)) < REX.half + 2.2 * size && R.side * d > -REX.dMin;
+  }
+
+  // Segundos hasta el próximo mordisco de R (0 si está mordiendo)
+  rexNext(R) {
+    if (R.phase === 'bite') return 0;
+    if (R.phase === 'warn') return REX.warn - R.t;
+    if (R.phase === 'back') return REX.back - R.t + R.wait0;
+    return Math.max(0, R.wait - R.t) + REX.warn;
+  }
+
+  updateRex(dt, vehicles) {
+    if (!this.rex.length) return;
+    const tr = this.track, game = this.game;
+    for (const R of this.rex) {
+      // sin nadie cerca, quieto
+      if (!this.anyNear(vehicles, R.s - 10, R.s + 10, 300)) continue;
+      R.t += dt;
+      const T = this.time;
+      let pitch = Math.sin(T * 1.1 + R.s) * 0.04, headP = Math.sin(T * 1.7 + R.s) * 0.06, open = 0.06, lunge = 0;
+      if (R.phase === 'idle') {
+        // está al acecho: si viene un camión por su lado, adelanta el aviso (como mucho REX.early s)
+        // para morder justo cuando pase; así el aviso siempre es para alguien
+        let prey = false;
+        if (R.t >= R.wait - REX.early) {
+          for (const v of vehicles) {
+            if (v.state !== 'ok' || R.side * v.d < 0) continue;
+            const a = tr.ahead(v.s, R.s), eta = a / Math.max(8, v.vF);
+            if (a < tr.length / 2 && eta > REX.warn && eta < REX.warn + 0.4) { prey = true; break; }
+          }
+        }
+        if (R.t >= R.wait || prey) {
+          R.phase = 'warn'; R.t = 0;
+          const P = tr.pointAt(R.s, R.side * 10);
+          game.sound3d('trex', P.x, P.z, 0.9);
+        }
+      } else if (R.phase === 'warn') {
+        const k = Math.min(1, R.t / REX.warn);
+        // echa la cabeza atrás, abre la boca y la sacude (ruge)
+        pitch = 0.12 * k; headP = 0.25 * k + Math.sin(R.t * 26) * 0.05 * k; open = 0.06 + 0.7 * Math.min(1, k * 2);
+        if (R.t >= REX.warn) { R.phase = 'bite'; R.t = 0; R.hitDone.clear(); }
+      } else if (R.phase === 'bite') {
+        const k = Math.min(1, R.t / 0.2); // baja de golpe y cierra al llegar abajo
+        pitch = 0.12 - 0.87 * k; headP = 0.25 - 0.55 * k; lunge = 2.2 * k;
+        open = R.t < 0.2 ? 0.76 : Math.max(0, 0.76 - (R.t - 0.2) * 8);
+        if (R.t >= 0.2 && !R.snapped) {
+          R.snapped = true;
+          const P = tr.pointAt(R.s, R.side * 6);
+          game.sound3d('snap', P.x, P.z, 0.8);
+          game.fx.dust(P.x, tr.baseAt(R.s), P.z, 0, 0, tr.theme.dust, 8, 2.5);
+        }
+        // muerde durante todo el mordisco: la cabeza tapa la mitad del camino de su lado
+        for (const v of vehicles) {
+          if (v.state !== 'ok' || R.hitDone.has(v) || v.y > tr.baseAt(v.s) + 7) continue;
+          if (this.rexZone(R, v.s, v.d, v.size)) {
+            R.hitDone.add(v);
+            const P = tr.pointAt(v.s);
+            if (v.hit({ dirX: -P.rx * R.side + P.tx * 0.2, dirZ: -P.rz * R.side + P.tz * 0.2, push: 14, up: 8, speedMul: 0.35, stun: 1.3, kind: 'bite' })) {
+              game.fx.sparks(v.x, v.y + 2.5, v.z, 14);
+            }
+          }
+        }
+        if (R.t >= REX.bite) { R.phase = 'back'; R.t = 0; R.snapped = false; R.wait0 = rand(REX.every[0], REX.every[1]) - REX.warn - REX.bite - REX.back; }
+      } else {
+        const k = 1 - Math.min(1, R.t / REX.back);
+        pitch = -0.75 * k + pitch * (1 - k); headP = -0.3 * k + headP * (1 - k); lunge = 2.2 * k;
+        if (R.t >= REX.back) { R.phase = 'idle'; R.t = 0; R.wait = R.wait0; }
+      }
+      R.upper.rotation.z = pitch;
+      R.head.rotation.z = headP;
+      R.jaw.rotation.z = -open;
+      R.root.position.x = -R.side * (REX.hipD - lunge);
+      R.root.scale.y = 1 + Math.sin(T * 1.3 + R.s) * 0.01;
+      // marca: se va llenando mientras avisa; llena mientras muerde
+      const showMark = R.phase === 'warn' || R.phase === 'bite';
+      R.mark.visible = showMark;
+      if (showMark) {
+        const k = R.phase === 'warn' ? 0.2 + 0.8 * Math.min(1, R.t / REX.warn) : 1;
+        R.fill.scale.set(R.W * k, 1, R.Lz * k);
+        R.fillMat.opacity = R.phase === 'bite' ? 0.85 : 0.4 + 0.35 * k;
+        this.rexEdge.color.setHex(Math.floor(T * 8) % 2 ? 0xffd000 : 0xffffff);
+      }
+    }
+  }
+
   explodeBarrel(b, vehicles) {
     b.alive = false; b.timer = 12; b.fuse = 0;
     const P = this.track.pointAt(b.s, b.d);
@@ -1416,6 +1560,65 @@ const mergeT = (list) => { const m = mergeGeometries(list); list.forEach((x) => 
 // Patas del saurópodo: d de cada par (delantero y trasero) y radio de cada columna
 const SAURO_LEGS = [-6.5, 5.5];
 const SAURO_R = 1.3;
+
+// Tiranosaurio: dónde está la cadera (d desde el eje, altura), el cuello respecto a la cadera,
+// cada cuánto muerde (s), cuánto avisa, cuánto dura el mordisco y cuánto tarda en volver; la
+// zona del mordisco es la mitad del camino de su lado (desde d = -dMin hasta la barrera, dMax)
+// y ±half m a lo largo de la pista
+export const REX = { hipD: 19.5, hipY: 10, neck: [8.2, 4.6, 0], every: [4.5, 5.5], warn: 1.1, bite: 0.5, back: 0.6, early: 0.7, dMin: 0.3, dMax: 15, half: 7 };
+
+// Tiranosaurio mirando hacia +x (la pista): patas y cola; tronco con brazos y cuello (gira en la
+// cadera); cabeza (gira en el cuello) y mandíbula. El tronco va respecto a la cadera, la cabeza
+// respecto al cuello y la mandíbula respecto a su bisagra.
+function rexGeo() {
+  const SKIN = 0x6f8a3a, DARK = 0x4c6128, BELLY = 0xd9c98a, STRIPE = 0x3f5222, TOOTH = 0xfffbe8, MOUTH = 0x9a1a1a;
+  const body = [];
+  // patas: muslo grueso, espinilla, pie con garras
+  for (const z of [-2.3, 2.3]) {
+    body.push(tsph(2.6, 3.4, 1.5, 0.2, 8.6, z, SKIN, 9, 6));
+    body.push(ttube([0.6, 6.5, z], [-1.2, 2.2, z * 1.05], 1.1, 0.75, SKIN, 7));
+    body.push(ttube([-1.2, 2.4, z * 1.05], [-0.4, 0.6, z * 1.05], 0.7, 0.55, DARK, 6));
+    body.push(tbox(3.0, 0.9, 1.5, 0.6, 0.45, z * 1.05, DARK));
+    for (const dz of [-0.5, 0, 0.5]) body.push(tbox(0.7, 0.4, 0.35, 2.4, 0.3, z * 1.05 + dz, TOOTH));
+  }
+  // cola: de la cadera hacia atrás, adelgazando, con rayas
+  const tail = [[-1, 10.4, 0], [-7, 10.2, 0], [-12.5, 8.6, 0], [-17.5, 6.4, 0], [-21.5, 4.4, 0]];
+  for (let i = 0; i < tail.length - 1; i++) body.push(ttube(tail[i], tail[i + 1], 2.8 - i * 0.65, 2.15 - i * 0.6, SKIN, 8));
+  for (const [x, y, r] of [[-6, 11.9, 1.0], [-11, 10.6, 0.8], [-15.5, 8.8, 0.6]]) body.push(tbox(1.1, 0.4, r * 2.4, x, y, 0, STRIPE));
+  // tronco: cuerpo inclinado, tripa clara, rayas y dos brazos diminutos
+  const up = [];
+  up.push(tint(new THREE.SphereGeometry(1, 12, 8).scale(5.2, 3.2, 2.9).rotateZ(0.18).translate(2.6, 0.9, 0), SKIN));
+  up.push(tsph(4.2, 1.9, 2.2, 3.2, -0.9, 0, BELLY, 10, 6));
+  for (const [x, y] of [[0.5, 3.9], [2.8, 4.1], [5.0, 3.7]]) up.push(tbox(1.0, 0.5, 4.2, x, y, 0, STRIPE));
+  for (const z of [-1, 1]) {
+    up.push(ttube([6.4, 0.6, z * 1.9], [7.6, -0.7, z * 2.3], 0.42, 0.3, SKIN, 5));
+    up.push(ttube([7.6, -0.7, z * 2.3], [8.4, -0.1, z * 2.3], 0.3, 0.24, SKIN, 5));
+    for (const dy of [-0.15, 0.2]) up.push(tbox(0.5, 0.15, 0.15, 8.7, dy, z * 2.3, TOOTH));
+  }
+  // cuello hasta la cabeza
+  up.push(ttube([5.5, 2.2, 0], [REX.neck[0] + 0.6, REX.neck[1] - 0.2, 0], 2.2, 1.7, SKIN, 8));
+  // cabeza: enorme y cuadrada, con ojos, cejas, orificios y dientes de arriba
+  const hd = [];
+  hd.push(tbox(3.4, 2.6, 3.0, 1.4, 0.7, 0, SKIN));        // cráneo
+  hd.push(tbox(3.6, 1.8, 2.4, 4.4, 0.4, 0, SKIN));        // hocico
+  hd.push(tbox(6.6, 0.7, 2.7, 2.7, -0.75, 0, BELLY));     // labio de arriba
+  hd.push(tbox(5.8, 0.25, 2.3, 2.9, -1.12, 0, MOUTH));    // paladar (rojo, se ve al abrir)
+  for (const z of [-1, 1]) {
+    hd.push(tbox(1.0, 0.9, 0.3, 1.9, 1.4, z * 1.5, 0xfff4c0)); // ojo
+    hd.push(tbox(0.45, 0.55, 0.3, 2.15, 1.35, z * 1.58, 0x111111));
+    hd.push(tbox(1.6, 0.45, 0.5, 1.9, 2.1, z * 1.35, DARK)); // ceja
+    hd.push(tbox(0.4, 0.3, 0.3, 5.9, 0.9, z * 0.6, 0x222222)); // orificio
+    for (let k = 0; k < 7; k++) hd.push(tint(new THREE.ConeGeometry(0.2, 0.75, 4).rotateX(Math.PI).translate(0.6 + k * 0.82, -1.45, z * 1.18), TOOTH));
+  }
+  for (let k = 0; k < 2; k++) hd.push(tint(new THREE.ConeGeometry(0.2, 0.7, 4).rotateX(Math.PI).translate(5.3 + k * 0.4, -1.45, 0), TOOTH));
+  // mandíbula: con lengua y dientes de abajo
+  const jw = [];
+  jw.push(tbox(5.8, 0.9, 2.5, 2.7, -0.55, 0, SKIN));
+  jw.push(tbox(5.2, 0.4, 2.2, 2.8, -1.1, 0, BELLY));
+  jw.push(tbox(4.6, 0.2, 1.6, 2.6, -0.02, 0, MOUTH));
+  for (const z of [-1, 1]) for (let k = 0; k < 6; k++) jw.push(tint(new THREE.ConeGeometry(0.18, 0.6, 4).translate(0.9 + k * 0.82, 0.28, z * 1.08), TOOTH));
+  return { body: mergeT(body), upper: mergeT(up), head: mergeT(hd), jaw: mergeT(jw) };
+}
 
 // Saurópodo de cuello largo de través sobre la pista (x local = -d, z = a lo largo de la pista)
 function sauropodGeo() {

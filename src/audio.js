@@ -159,6 +159,11 @@ export class Sound {
         this.osc('square', 70, 48, 1.1, 0.06 * v, 0.05);
         this.noiseBurst(1.0, 0.18 * v, 'bandpass', 500, 220, 1.5);
         break;
+      case 'trex': // rugido del tiranosaurio: más agudo y rasposo que el del saurópodo, y corto
+        this.osc('sawtooth', 210, 95, 0.95, 0.12 * v);
+        this.osc('square', 150, 70, 0.95, 0.05 * v, 0.04);
+        this.noiseBurst(0.9, 0.2 * v, 'bandpass', 1100, 350, 2);
+        break;
       case 'cannon': // cañonazo lejano: golpe seco y retumbo
         this.noiseBurst(0.9, 0.55 * v, 'lowpass', 700, 50);
         this.osc('sine', 70, 28, 0.7, 0.55 * v);
