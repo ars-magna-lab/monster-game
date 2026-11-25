@@ -154,11 +154,46 @@ export const CIRCUITS = [
     },
   },
   {
-    id: 'volcan', name: 'Volcán Rugiente', short: 'Volcán',
-    desc: 'Fosos de lava, rocas rodantes y ceniza. ¡No te caigas!',
-    layout: [S(250), A(90, 90), S(350), A(135, 55), A(-90, 50), A(90, 50), A(-45, 60), S(280), A(45, 90), S(0, { solve: 'X' }), A(135, 60), S(0, { solve: 'Y' })],
-    features: (at, L) => standardFeatures(at, L, { liquid: 'lava', bigPitLiquid: 'lava' }),
-    places: STANDARD_PLACES,
+    // Saltos y fuego: el más largo, tres fosos de lava, rocas rodantes y un túnel largo con barriles
+    id: 'volcan', name: 'Volcán Rugiente', short: 'Volcán', rev: 2,
+    desc: 'El más largo: tres fosos de lava que saltar, rocas rodantes y un túnel lleno de barriles.',
+    //        0       1            2       3             4            5                    6            7                    8            9
+    layout: [S(350), A(120, 120), S(430), A(-60, 150), A(150, 100), S(0, { solve: 'X' }), A(60, 130), S(0, { solve: 'Y' }), A(90, 120), S(150)],
+    features: (at, L) => ({
+      plateaus: [{ a: at(7, 195), b: at(7, 235), c: at(7, 345), d: at(7, 390), h: 5 }],
+      whoops: [{ a: at(3, 40), b: at(3, 40) + 6 * 9, amp: 0.75, wl: 9 }],
+      ramps: [
+        fullRamp(at, L, 2, 330),
+        { s0: at(5, 220), s1: at(5, 236), d0: -L, d1: 2, h: 3.5 },
+        fullRamp(at, L, 7, 262),
+      ],
+      pits: [
+        // 1: nada más salir del túnel; 2: rampa a la izquierda o puente a la derecha; 3: el gran salto de la meseta
+        { name: 'lava1', s0: at(2, 346), s1: at(2, 366), floor: 1.4, liquid: 'lava' },
+        { name: 'lava2', s0: at(5, 236), s1: at(5, 258), floor: 1.4, liquid: 'lava', bridges: [[6, 11]] },
+        { name: 'lava3', s0: at(7, 278), s1: at(7, 298), floor: 1.4, liquid: 'lava' },
+      ],
+      mud: [
+        patch(at, 1, 60, -4), patch(at, 1, 95, 5), patch(at, 1, 130, -2),
+        patch(at, 4, 100, 4), patch(at, 4, 140, -5), patch(at, 4, 180, 0),
+      ],
+      tunnel: { s0: at(2, 30), s1: at(2, 290) },
+      // fase 2: aquí caerán rocas del volcán (recta de 150 m sin nada)
+      reserved: [{ kind: 'lluvia de rocas', s0: at(7, 20), s1: at(7, 170) }],
+    }),
+    places: {
+      turbos: [[0, 40, -6], [0, 40, 6], [2, 310, 0], [4, 240, 0], [5, 200, -7], [7, 240, 0], [9, 60, -6], [9, 60, 6]],
+      boxes: [[0, 110], [2, 410], [4, 30], [7, 185], [8, 90]],
+      rollers: [
+        { seg: 0, list: [[185, 4.2, 0], [212, 3.6, 0.45]], sign: [0, 150] },
+        { seg: 5, list: [[60, 4.0, 0.15], [85, 4.6, 0.55], [110, 3.9, 0.35]], sign: [5, 20] },
+      ],
+      balls: [],
+      nets: [],
+      crush: [{ seg: 6, rows: crushRows([30, 43, 56]), sign: [5, 330] }],
+      barrels: [{ seg: 2, rows: [...barrelGroup(80, -1), ...barrelGroup(130, 1), [180, [-2, 2]], [183, [0]], ...barrelGroup(230, -1, 4)] }],
+      patchSigns: [[1, 25], [4, 70]],
+    },
     theme: {
       tex: {
         id: 'volcan',
