@@ -305,6 +305,7 @@ export class Obstacles {
     for (const side of [-1, 1]) {
       const sign = makeBoard(text, color);
       placeOnTrack(sign, this.track, s, side * (LIMIT + 3), 0);
+      sign.rotation.y += Math.PI; // la cara con el texto, hacia quien llega
       this.group.add(sign);
     }
   }

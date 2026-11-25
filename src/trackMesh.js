@@ -184,6 +184,7 @@ export function buildTrackMeshes(track, scene) {
       const txt = pitText(track.theme, p.liquid);
       const sign = makeSign(txt, p.liquid === 'lava' ? '#d4380d' : p.liquid === 'ice' ? '#2a6fdb' : p.water ? '#1f8a3a' : '#e0a100');
       placeOnTrack(sign, track, p.s0 - 30, side * (LIMIT + 3), track.baseAt(p.s0 - 30));
+      sign.rotation.y += Math.PI; // la cara con el texto, hacia quien llega
       group.add(sign);
     }
   }
@@ -266,6 +267,7 @@ export function buildTrackMeshes(track, scene) {
     for (const side of [-1, 1]) {
       const sign = makeSign(k.name || '¡LAGO HELADO!', '#2a6fdb');
       placeOnTrack(sign, track, k.s0 - 25, side * (LIMIT + 3), track.baseAt(k.s0 - 25));
+      sign.rotation.y += Math.PI; // la cara con el texto, hacia quien llega
       group.add(sign);
     }
   }
