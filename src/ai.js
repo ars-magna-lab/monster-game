@@ -97,17 +97,21 @@ export class AIDriver {
       }
     }
     const speed = Math.max(0, v.vF);
-    const la = 9 + speed * 0.45;
+    // puente estrecho delante o debajo: va derecho a su carril, sin titubeos y sin correr tanto
+    const pk = this.pitPick;
+    this.careful = !!pk?.narrow && (tr.ahead(v.s, pk.p.s0) < 70 || tr.ahead(pk.p.s0, v.s) < pk.p.s1 - pk.p.s0 + 2);
+    const la = this.careful ? 7 + speed * 0.3 : 9 + speed * 0.45;
     const rl = this.rollerLane(game, speed);
     const want = rl ?? this.laneAt(v.s + la);
-    this.lane += (want - this.lane) * Math.min(1, dt * (rl === null ? 1.2 : 3));
+    this.lane += (want - this.lane) * Math.min(1, dt * (rl === null && !this.careful ? 1.2 : 3));
     const P = tr.pointAt(v.s + la, this.lane);
     this.noiseT -= dt;
     if (this.noiseT <= 0) { this.noiseT = rand(0.3, 1.2); this.noise = rand(-0.12, 0.12) / this.skill; }
     const target = Math.atan2(P.z - v.z, P.x - v.x);
     const err = wrapAng(target - v.th);
-    let steer = Math.max(-1, Math.min(1, err * 2.6 + this.noise));
+    let steer = Math.max(-1, Math.min(1, err * 2.6 + (this.careful ? 0 : this.noise)));
     let throttle = 1, brake = 0;
+    if (this.careful && speed > 27) { throttle = 0; brake = speed > 31 ? 0.5 : 0; }
     if (Math.abs(err) > 1.7) {
       // mirando al revés: marcha atrás girando
       throttle = 0; brake = 1; steer = -Math.sign(err);

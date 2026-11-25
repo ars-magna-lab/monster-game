@@ -255,7 +255,7 @@ export function buildTrackMeshes(track, scene) {
     it.needsUpdate = true;
     const ice = new THREE.Mesh(
       strip(track, rows, (s) => { const h = track.baseAt(s) + 0.05; return [[-LIMIT, h], [0, h], [LIMIT, h]]; }, (s, c, d) => [d / 14, s / 14]),
-      new THREE.MeshStandardMaterial({ map: it, color: 0xd6f0ff, roughness: 0.12, metalness: 0.15, transparent: true, opacity: 0.9, depthWrite: false }),
+      new THREE.MeshStandardMaterial({ map: it, color: 0xeaf7ff, roughness: 0.12, metalness: 0.15, transparent: true, opacity: 0.9, depthWrite: false }),
     );
     ice.renderOrder = 1;
     ice.receiveShadow = true;

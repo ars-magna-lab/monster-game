@@ -86,7 +86,7 @@ export class Obstacles {
     // ---------- Bolas de demolición ----------
     // (en la selva son troncos colgantes: misma mecánica, otra malla)
     const swingLog = TH.swing === 'log';
-    const frameMat = new THREE.MeshStandardMaterial(swingLog ? { map: T.barkTex(), color: 0x9a7a5a, roughness: 1 } : { color: 0xf0b400, metalness: 0.4, roughness: 0.5 });
+    const frameMat = new THREE.MeshStandardMaterial(swingLog ? { map: T.barkTex(), color: 0xe0c8a8, roughness: 1 } : { color: 0xf0b400, metalness: 0.4, roughness: 0.5 });
     const chainMat = swingLog ? new THREE.MeshStandardMaterial({ color: 0xb89a62, roughness: 1 }) : new THREE.MeshStandardMaterial({ color: 0x555555, metalness: 0.8, roughness: 0.4 });
     for (const B of PL.balls) {
       const g5 = tr.segs[B.seg];
