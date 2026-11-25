@@ -20,8 +20,24 @@ Controles:
 | M | Silencio |
 | F | Ver los fps y la calidad gráfica |
 
-También funciona con mando (stick o cruceta, RT/A acelera, LT/B frena, X/RB objeto, Y vuelve a la pista)
-y con botones táctiles en móvil o tableta.
+También funciona con botones táctiles en móvil o tableta, y con mando:
+
+| Mando | Acción |
+| --- | --- |
+| Stick o cruceta | Girar |
+| A o gatillo derecho | Acelerar |
+| B o gatillo izquierdo | Frenar y marcha atrás |
+| X o RB | Usar objeto |
+| Y | Volver a la pista |
+| Start | Pausa |
+
+Todos los menús se manejan también con el mando o el teclado: stick, cruceta o flechas para moverse
+(arriba y abajo cambian de fila; izquierda y derecha cambian el valor), A o Intro para elegir, B o Escape
+para volver y Start para empezar o reanudar. Si un mando se desconecta en plena carrera, el juego se pausa.
+El mando vibra con los golpes y las caídas si lo admite.
+
+Para jugar en la tele: conecta el ordenador por HDMI y pulsa el botón de pantalla completa de la portada
+(también está en el menú de pausa). En una Xbox, abre la dirección del juego en el navegador Edge.
 
 Si el juego va a tirones, elige «Gráficos: Baja» en la elección de camión. En «Auto» (por defecto) el juego
 detecta si el ordenador no tiene aceleración gráfica y baja la resolución y las sombras él solo.
@@ -47,6 +63,14 @@ Pantalla:
   con `npm start`, que abre `http://localhost:8080`, elige esa opción en la selección de camión,
   arrastra la ventana nueva al segundo monitor y pulsa F11 en cada una. Desde `index.html` como
   fichero no se puede: el navegador no deja que una ventana dibuje en otra.
+
+## Campeonato
+
+En la selección de camión, «Modo: Campeonato» encadena los cinco circuitos (Valle, Selva, Nieve, Ciudad y
+Volcán) con los mismos camiones, vueltas y rivales. Cada carrera da 10, 7, 5, 3, 2 y 1 puntos; tras cada una
+se ve la clasificación general y al final hay podio. Los empates se deciden por victorias y después por el
+puesto en la última carrera. «Reiniciar carrera» repite solo la carrera actual; «Abandonar» o «Salir al menú»
+terminan el campeonato. Se guardan las copas ganadas y la mejor puntuación. Vale para uno o dos jugadores.
 
 ## Qué hay
 
@@ -78,10 +102,23 @@ npm test          # prueba de humo (también: node tools/smoke.mjs dos|teclado|c
 node tools/shot.mjs salida.png "g.startRace()" 2000   # captura de depuración
 node tools/circuits.mjs [nieve ...]                    # una vuelta simulada y captura de cada circuito
 node tools/music.mjs race 30 race.wav [drums,bass]     # renderiza la música (opcional: instrumentos a silenciar)
+npm run musica            # vuelve a generar los MP3 de assets/musica (unos 7 minutos)
+npm run test:pista        # comprueba que el suelo no tapa la pista al dibujar sin tarjeta gráfica
+npm run test:memoria      # comprueba que cambiar de circuito no acumula memoria
+node tools/mando.mjs      # prueba los menús con un mando simulado
+node tools/copa.mjs       # corre un campeonato entero con piloto automático
+node tools/circuits.mjs --medir --carreras 3 --vueltas 2 --dif normal   # cómo se defiende la IA y equilibrio de objetos
 ```
+
+La música se sintetiza en `src/music.js`, pero el juego carga los dos temas ya renderizados de
+`assets/musica/` para que suenen al instante. Si cambias `src/music.js`, sube `MUSIC_VERSION` y ejecuta
+`npm run musica` (`node tools/music.mjs comprobar` avisa si no coinciden). Abriendo `index.html` como fichero
+el navegador no deja descargar los MP3: ahí la música se sintetiza la primera vez (tarda unos minutos) y
+queda guardada en el navegador.
 
 Añade `?auto` a la URL para que el ordenador conduzca tu camión (sirve de demostración).
 
 Código en `src/`: `circuits.js` (trazado, obstáculos y aspecto de cada circuito), `track.js` (geometría y alturas), `trackMesh.js` (mallas de la pista), `trucks.js`
 (camiones), `vehicle.js` (física), `ai.js` (rivales), `obstacles.js`, `projectiles.js` (objetos que se lanzan), `world.js` (escenario),
-`hud.js`, `audio.js` (sonido sintetizado), `music.js` (canciones), `optimize.js` (trucos de rendimiento), `main.js` (estados del juego y cámara).
+`hud.js`, `input.js` (teclado, mandos y táctil), `menunav.js` (menús con foco), `copa.js` (campeonato y podio), `audio.js` (sonido sintetizado),
+`music.js` (canciones), `optimize.js` (trucos de rendimiento), `main.js` (estados del juego y cámara).
