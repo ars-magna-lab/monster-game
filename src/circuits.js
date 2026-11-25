@@ -322,6 +322,122 @@ export const CIRCUITS = [
       roller: 'pipe', crush: 'car', patch: 'oil', patchName: '¡ACEITE!', rollerName: '¡TUBERÍAS!', rollerHit: '¡TUBERÍA!', dust: [0.62, 0.62, 0.64],
     },
   },
+  {
+    // Fluido y prehistórico: curvas largas para derrapar, una zona revirada entre rocas,
+    // dos estampidas de tricerátops, un saurópodo plantado en la pista y un túnel de costillas
+    id: 'dinos', name: 'Cañón Jurásico', short: 'Dinos',
+    desc: 'Un cañón prehistórico: estampidas de tricerátops, un saurópodo gigante entre cuyas patas hay que pasar, alquitrán y un túnel de costillas.',
+    //        0       1            2       3            4           5            6           7            8                    9            10                   11
+    layout: [S(250), A(90, 120), S(190), A(-60, 100), A(70, 50), A(-70, 50), A(70, 50), A(80, 110), S(0, { solve: 'X' }), A(90, 120), S(0, { solve: 'Y' }), A(90, 100)],
+    features: (at, L) => ({
+      // foso de alquitrán con rampa de lado a lado, al final de la recta del saurópodo
+      ramps: [fullRamp(at, L, 8, 236)],
+      pits: [{ name: 'alquitrán', s0: at(8, 252), s1: at(8, 272), floor: 1.4, liquid: 'tar' }],
+      // charcas de alquitrán en la zona revirada
+      mud: [
+        patch(at, 4, 22, -4), patch(at, 4, 46, 5), patch(at, 5, 22, 4), patch(at, 5, 46, -4),
+        patch(at, 6, 22, -3), patch(at, 6, 46, 5),
+      ],
+      tunnel: { s0: at(10, 25), s1: at(10, 205) }, // el esqueleto gigante (abierto por arriba)
+      // estampidas: tricerátops que cruzan la pista (misma mecánica que el tráfico de la ciudad)
+      crossings: [
+        { s0: at(2, 100), s1: at(2, 130), dir: 1, speed: 9, sign: at(2, 60) },
+        { s0: at(10, 300), s1: at(10, 330), dir: -1, speed: 10, sign: at(10, 262) },
+      ],
+      // el gran saurópodo: cuatro patas como columnas en la pista (se pasa entre ellas)
+      legs: [{ s: at(8, 90), sign: at(8, 40) }],
+    }),
+    places: {
+      turbos: [[0, 40, -6], [0, 40, 6], [1, 120, 0], [2, 20, -5], [2, 20, 5], [8, 180, 0], [9, 150, 0], [10, 240, -6], [10, 240, 6], [11, 120, 0]],
+      boxes: [[0, 200], [2, 170], [7, 80], [10, 380], [11, 40]],
+      rollers: [{ seg: 9, list: [[70, 4.2, 0], [96, 3.6, 0.45]], sign: [9, 30] }],
+      balls: [],
+      nets: [],
+      // huevos gigantes para chafar (y un nido dentro del esqueleto)
+      crush: [
+        { seg: 0, rows: crushRows([100, 113, 126, 139]), sign: [0, 75] },
+        { seg: 10, rows: crushRows([110, 123]) },
+      ],
+      barrels: [],
+      patchSigns: [[3, 70]],
+    },
+    theme: {
+      tex: {
+        id: 'dinos',
+        edge: ['#b8693e', '#a65c34', '#c97a4a', '#5f7a2a', '#9a5230'],
+        road: ['#c98a5a', '#b87a4c', '#d89a68', '#a86c42', '#e0a878', '#9a603a'],
+        ruts: '#6a3a1e', curb: ['#f2e6c8', '#7a3a1e'],
+        grass: ['#b8693e', '#a85c34', '#c4784a', '#6c7f2e', '#9a5634', '#d08a58'],
+        dirt: ['#8a4a2a', '#7a3f22', '#9a5634', '#6a361c'],
+        barrier: ['#efe4c6', '#8a4a26'],
+        rock: ['#a0573a', '#8c4a30', '#b86a48', '#7a3e26', '#c47c58'],
+        patch: [[22, 18, 16], [36, 30, 28], [90, 80, 70]],
+        water: ['#16110e', 'rgba(120,100,80,0.45)'],
+      },
+      sky: [0x5f9fd6, 0xf4d9b0], fog: [0xeccfa6, 230, 1250],
+      hemi: [0xfff0d8, 0x7a4a30, 1.05], sun: [0xffe6c0, 2.7],
+      mountains: 0xa4583a, mesas: true, hills: 0x9a5434, trees: 'cycad', rocks: 0xa0573a, farVolcano: true, bones: true,
+      tunnel: { inner: 0xefe4c6, outer: 0xb86a48, ribs: true }, crocs: false,
+      roller: 'rock', crush: 'egg', patch: 'mud', patchName: '¡ALQUITRÁN!', rollerName: '¡ROCAS!', rollerHit: '¡ROCA!', dust: [0.72, 0.45, 0.3],
+      cross: 'trike', crossName: '¡ESTAMPIDA!', crushName: '¡HUEVOS!', msg: { car: '¡TRICERÁTOPS!' },
+    },
+  },
+  {
+    // Costa: la recta de la playa con olas, un muelle sobre el mar con salto y tiburones, una
+    // horquilla alrededor del faro y el espigón bajo los cañonazos del barco pirata
+    id: 'playa', name: 'Bahía Pirata', short: 'Playa',
+    desc: 'Arena y mar: olas que inundan la playa, un muelle con salto sobre los tiburones, la vuelta al faro y los cañonazos del barco pirata.',
+    //        0       1           2       3            4                    5            6                    7           8       9
+    layout: [S(300), A(-90, 60), S(200), A(180, 55), S(0, { solve: 'X' }), A(90, 100), S(0, { solve: 'Y' }), A(90, 60), S(100), A(90, 60)],
+    features: (at, L) => ({
+      ramps: [fullRamp(at, L, 2, 70)],
+      // el salto del muelle: agua con tiburones entre dos trozos de muelle
+      pits: [{ name: 'muelle', s0: at(2, 86), s1: at(2, 108), floor: 1.4, liquid: 'water', crocs: true }],
+      pier: { s0: at(2, 0), s1: at(2, 200) },
+      // algas en las curvas
+      mud: [patch(at, 3, 40, 4), patch(at, 3, 120, -4), patch(at, 7, 40, 4), patch(at, 9, 50, -3)],
+      tunnel: { s0: at(6, 40), s1: at(6, 220) }, // la cueva del acantilado
+      // olas: entran y salen por el lado del mar (izquierda) en la recta de la playa
+      waves: [{ s0: at(0, 150), s1: at(0, 280), side: -1, sign: at(0, 110) }],
+      // cañonazos del barco pirata sobre el espigón (cartel 35 m antes)
+      meteors: [{ s0: at(4, 120), s1: at(4, 270), sign: at(4, 85) }],
+    }),
+    places: {
+      turbos: [[0, 40, -6], [0, 40, 6], [2, 30, 0], [4, 290, -6], [4, 290, 6], [6, 300, 0], [8, 50, 0]],
+      boxes: [[0, 100], [2, 160], [4, 70], [6, 20], [9, 30]],
+      // cangrejos gigantes que cruzan de lado y pelotas de playa que ruedan
+      rollers: [
+        { seg: 6, list: [[290, 4.0, 0.1], [318, 4.6, 0.6], [346, 3.8, 0.3]], sign: [6, 250] },
+      ],
+      balls: [],
+      nets: [],
+      crush: [{ seg: 4, rows: crushRows([20, 33, 46, 59]), sign: [3, 140] }],
+      barrels: [{ seg: 6, rows: [...barrelGroup(90, -1), ...barrelGroup(130, 1), ...barrelGroup(175, -1)] }],
+      patchSigns: [[3, 10], [7, 10]],
+    },
+    theme: {
+      tex: {
+        id: 'playa',
+        edge: ['#efdcae', '#e4cf9c', '#f6e7c0', '#dcc490'],
+        road: ['#d9bd88', '#ccb07a', '#e4c896', '#c2a46e', '#ead2a2', '#b89a66'],
+        ruts: '#9a7a48', curb: ['#ff5a36', '#ffffff'],
+        grass: ['#f0dcac', '#e8d29c', '#f6e6bc', '#e2c994', '#fbefd0'],
+        dirt: ['#c9a874', '#b89866', '#d6b886', '#a88856'],
+        barrier: ['#ffffff', '#1aa0d8'],
+        rock: ['#c8a878', '#b8986a', '#d6b888', '#a8885a', '#e0c494'],
+        patch: [[52, 92, 40], [70, 110, 52], [120, 150, 70]],
+        water: ['#1fb5c8', 'rgba(255,255,255,0.55)'],
+      },
+      sky: [0x2f9be8, 0xd8f0ff], fog: [0xd6eef8, 280, 1450],
+      hemi: [0xe8f6ff, 0xc9a878, 1.1], sun: [0xfff6e0, 2.8],
+      mountains: 0x7f9c8a, hills: 0x9fb86a, trees: 'palm', rocks: 0xb8986a, beach: true,
+      // el mar: todo lo que queda a la izquierda de la playa y a la derecha del espigón
+      sea: { z: -42, x: 540 },
+      tunnel: { inner: 0xc8a878, outer: 0xc9a46a }, crocs: true, sharks: true, crocName: '¡TIBURONES!',
+      roller: 'crab', crush: 'sandcastle', patch: 'mud', patchName: '¡ALGAS!', rollerName: '¡CANGREJOS!', rollerHit: '¡CANGREJO!', dust: [0.92, 0.84, 0.66],
+      cannon: true, rainName: '¡CAÑONAZOS!', crushName: '¡CASTILLOS!', msg: { meteor: '¡CAÑONAZO!' },
+    },
+  },
 ];
 
 export const circuitById = (id) => CIRCUITS.find((c) => c.id === id) || CIRCUITS[0];
@@ -330,6 +446,7 @@ export const circuitById = (id) => CIRCUITS.find((c) => c.id === id) || CIRCUITS
 export function pitText(theme, liquid) {
   if (liquid === 'lava') return '¡LAVA!';
   if (liquid === 'ice') return '¡AGUA HELADA!';
+  if (liquid === 'tar') return '¡ALQUITRÁN!';
   if (liquid === 'water') return theme.crocs ? (theme.crocName || '¡COCODRILOS!') : '¡AL AGUA!';
   return '¡FOSO!';
 }

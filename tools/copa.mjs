@@ -24,7 +24,8 @@ page.on('pageerror', (e) => errors.push('[pageerror] ' + e.message));
 await page.goto('file://' + resolve(root, 'index.html'));
 await page.waitForFunction(() => window.__mm, { timeout: 180000 });
 
-const COPA = ['clasico', 'selva', 'nieve', 'ciudad', 'volcan'];
+const COPA = ['clasico', 'playa', 'selva', 'dinos', 'nieve', 'ciudad', 'volcan'];
+const N = COPA.length;
 const POINTS = [10, 7, 5, 3, 2, 1];
 const A = 0, B = 1, UP = 12, DOWN = 13, LEFT = 14, RIGHT = 15;
 
@@ -96,10 +97,10 @@ const cuenta = await ev(() => {
   return { state: g.state, circuit: g.circuit.id, banner: window.__vis('cup-banner') ? document.getElementById('cup-banner').textContent : '' };
 });
 await shot('52-copa-cuenta-atras');
-check('arranca la copa en Valle con rótulo', arranque.foco === 'btn-start' && cuenta.state === 'countdown' && cuenta.circuit === 'clasico' && /CARRERA 1 DE 5/.test(cuenta.banner), { arranque, cuenta });
+check('arranca la copa en Valle con rótulo', arranque.foco === 'btn-start' && cuenta.state === 'countdown' && cuenta.circuit === 'clasico' && new RegExp(`CARRERA 1 DE ${N}`).test(cuenta.banner), { arranque, cuenta });
 
 let total = 0;
-for (let i = 0; i < 5; i++) {
+for (let i = 0; i < N; i++) {
   if (i === 2) {
     // pausa → «Reiniciar carrera»: repite solo esta carrera, sin tocar los puntos
     const re = await ev(([DOWN, A]) => {
@@ -121,9 +122,9 @@ for (let i = 0; i < 5; i++) {
   const raceOk = r.cup.race.join() === POINTS.map((p) => '+' + p).join();
   check(`carrera ${i + 1}: ${r.circuit}, 28 puntos (total ${sum}), general ordenada`,
     st === 'finished' && r.circuit === COPA[i] && gained === 28 && sum === total && raceOk && r.cup.rows.length === 6 && ordered(r.cup)
-    && r.foco === 'btn-cup-next' && !r.again && r.quit && new RegExp(`CARRERA ${i + 1} DE 5`).test(r.round) && r.next === (i === 4 ? 'Ver podio' : 'Siguiente circuito'), r);
+    && r.foco === 'btn-cup-next' && !r.again && r.quit && new RegExp(`CARRERA ${i + 1} DE ${N}`).test(r.round) && r.next === (i === N - 1 ? 'Ver podio' : 'Siguiente circuito'), r);
   if (i === 1) await shot('53-copa-resultados');
-  if (i < 4) {
+  if (i < N - 1) {
     const nx = await ev((A) => { window.__btn(A, true); window.__f(1); window.__btn(A, false); const g = window.__mm; return { state: g.state, txt: document.getElementById('cupnext-name').textContent }; }, A);
     if (i === 1) await shot('54-copa-siguiente');
     const tras = await ev(() => { window.__f(3); return { state: window.__mm.state, circuit: window.__mm.circuit.id }; });

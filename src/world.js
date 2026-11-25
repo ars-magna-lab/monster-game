@@ -5,6 +5,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { LIMIT } from './track.js';
 import { placeOnTrack } from './trackMesh.js';
 import * as T from './textures.js';
+import { buildDinoScenery, buildBeachScenery, inSea } from './decorado.js';
 
 function rng(seed) {
   let s = seed >>> 0;
@@ -123,16 +124,17 @@ export function buildWorld(scene, track) {
       const a = (i / 40) * Math.PI * 2 + r() * 0.1;
       const dist = 950 + r() * 350;
       const h = 120 + r() * 220;
-      const g = new THREE.ConeGeometry(140 + r() * 160, h, 7, 1);
+      // (en el cañón, mesetas de techo plano)
+      const g = TH.mesas ? new THREE.CylinderGeometry(110 + r() * 80, 150 + r() * 120, h * 0.7, 8, 1) : new THREE.ConeGeometry(140 + r() * 160, h, 7, 1);
       g.translate(cx + Math.cos(a) * dist, h / 2 - 5, cz + Math.sin(a) * dist);
       mGeos.push(g);
     }
     const mountains = new THREE.Mesh(mergeGeometries(mGeos), new THREE.MeshStandardMaterial({ color: TH.mountains, flatShading: true, roughness: 1 }));
     scene.add(mountains);
   }
-  if (TH.volcano) {
-    // el gran volcán, con lava en el cráter y en las laderas
-    const vx = cx + 700, vz = cz - 500;
+  if (TH.volcano || TH.farVolcano) {
+    // el gran volcán, con lava en el cráter y en las laderas (en el cañón, lejos y humeando)
+    const vx = cx + (TH.farVolcano ? 1150 : 700), vz = cz - (TH.farVolcano ? 900 : 500);
     const cone = new THREE.CylinderGeometry(70, 330, 380, 14, 1, true);
     cone.translate(vx, 185, vz);
     scene.add(new THREE.Mesh(cone, new THREE.MeshStandardMaterial({ color: 0x2e2826, flatShading: true, roughness: 1 })));
@@ -151,6 +153,15 @@ export function buildWorld(scene, track) {
       flows.push(g);
     }
     scene.add(new THREE.Mesh(mergeGeometries(flows), lavaMat));
+    if (TH.farVolcano) {
+      const smoke = [];
+      for (let k = 0; k < 9; k++) {
+        const g = new THREE.IcosahedronGeometry(40 + k * 9, 0);
+        g.translate(vx + k * 22 + r() * 20, 400 + k * 38, vz + r() * 30);
+        smoke.push(g);
+      }
+      scene.add(new THREE.Mesh(mergeGeometries(smoke), new THREE.MeshStandardMaterial({ color: 0x6a5e58, flatShading: true, roughness: 1, transparent: true, opacity: 0.85 })));
+    }
   }
   if (TH.city) {
     // rascacielos lejanos
@@ -176,6 +187,7 @@ export function buildWorld(scene, track) {
     const x = cx + Math.cos(a) * dist, z = cz + Math.sin(a) * dist;
     if (distTrack(x, z) < 120) continue;
     const g = new THREE.SphereGeometry(40 + r() * 60, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2);
+    if (TH.sea && inSea(TH.sea, x, z)) g.scale(1.2, 0.5, 1.2); // en el mar, islotes bajos
     g.scale(1, 0.35 + r() * 0.4, 1);
     g.translate(x, -2, z);
     hGeos.push(g);
@@ -190,7 +202,7 @@ export function buildWorld(scene, track) {
   const kind = TH.trees;
   const m4 = new THREE.Matrix4();
   const q = new THREE.Quaternion();
-  const want = { mixed: 650, snowpine: 650, dead: 260, jungle: 900, park: 140 }[kind] || 400;
+  const want = { mixed: 650, snowpine: 650, dead: 260, jungle: 900, park: 140, palm: 160, cycad: 400 }[kind] || 400;
   const spots = [];
   let tries = 0;
   while (spots.length < want && tries < 25000) {
@@ -199,6 +211,7 @@ export function buildWorld(scene, track) {
     const dt = distTrack(x, z);
     if (dt < LIMIT + (kind === 'jungle' ? 10 : 18) || nearTunnel(x, z)) continue;
     if (TH.city && dt > 120) continue; // en la ciudad, solo árboles en las aceras y parques cercanos
+    if (TH.sea && inSea({ z: TH.sea.z + 8, x: TH.sea.x - 8 }, x, z)) continue; // ni en el mar ni en la orilla
     if (Math.abs(z) < 75 && x > -120 && x < 140) continue; // gradas
     spots.push([x, z, 0.7 + r() * 0.8, r()]);
   }
@@ -239,9 +252,29 @@ export function buildWorld(scene, track) {
       parts.push(b);
     }
     addInst(mergeGeometries(parts), new THREE.MeshStandardMaterial({ color: 0x1e1a18, roughness: 1, flatShading: true }), spots);
-  } else if (kind === 'jungle') {
-    // palmeras y árboles grandes de copa ancha
-    const palms = spots.filter((p) => p[3] < 0.45), big = spots.filter((p) => p[3] >= 0.45);
+  } else if (kind === 'cycad') {
+    // cícadas (tronco grueso y escamoso con una corona de hojas) y helechos gigantes a ras de suelo
+    const cyc = spots.filter((p) => p[3] < 0.55), ferns = spots.filter((p) => p[3] >= 0.55);
+    const ct = new THREE.CylinderGeometry(0.8, 1.1, 4.5, 7); ct.translate(0, 2.25, 0);
+    addInst(ct, new THREE.MeshStandardMaterial({ color: 0x7a5a32, roughness: 1, flatShading: true }), cyc);
+    const fronds = [];
+    for (let i = 0; i < 9; i++) {
+      const l = new THREE.BoxGeometry(0.7, 0.12, 5);
+      l.translate(0, 0, 2.4); l.rotateX(-0.5 + (i % 2) * 0.35); l.rotateY((i / 9) * Math.PI * 2);
+      l.translate(0, 4.6, 0);
+      fronds.push(l);
+    }
+    addInst(mergeGeometries(fronds), new THREE.MeshStandardMaterial({ color: 0x5f8a2a, roughness: 1, flatShading: true }), cyc);
+    const fern = [];
+    for (let i = 0; i < 7; i++) {
+      const l = new THREE.BoxGeometry(1.1, 0.1, 4.2);
+      l.translate(0, 0, 2); l.rotateX(-0.6); l.rotateY((i / 7) * Math.PI * 2 + 0.3);
+      fern.push(l);
+    }
+    addInst(mergeGeometries(fern), new THREE.MeshStandardMaterial({ color: 0x4f7f24, roughness: 1, flatShading: true }), ferns, 1.3);
+  } else if (kind === 'jungle' || kind === 'palm') {
+    // palmeras y árboles grandes de copa ancha (en la playa, solo palmeras)
+    const palms = spots.filter((p) => kind === 'palm' || p[3] < 0.45), big = kind === 'palm' ? [] : spots.filter((p) => p[3] >= 0.45);
     const pt = new THREE.CylinderGeometry(0.3, 0.5, 11, 6); pt.translate(0, 5.5, 0);
     addInst(pt, new THREE.MeshStandardMaterial({ color: 0x7a5a3a, roughness: 1 }), palms);
     const leaves = [];
@@ -295,7 +328,7 @@ export function buildWorld(scene, track) {
   const rocks = new THREE.InstancedMesh(rockGeo, new THREE.MeshStandardMaterial({ color: TH.rocks ?? 0x8a847a, flatShading: true, roughness: 1 }), nRocks);
   for (let i = 0; i < nRocks; i++) {
     let x, z;
-    do { x = cx + (r() - 0.5) * 1100; z = cz + (r() - 0.5) * 1000; } while (distTrack(x, z) < LIMIT + 6 || nearTunnel(x, z));
+    do { x = cx + (r() - 0.5) * 1100; z = cz + (r() - 0.5) * 1000; } while (distTrack(x, z) < LIMIT + 6 || nearTunnel(x, z) || (TH.sea && inSea(TH.sea, x, z)));
     const s = 0.5 + r() * 1.6;
     q.setFromEuler(new THREE.Euler(r() * 3, r() * 3, r() * 3));
     m4.compose(new THREE.Vector3(x, 0, z), q, new THREE.Vector3(s, s * 0.7, s));
@@ -426,6 +459,9 @@ export function buildWorld(scene, track) {
   stacks.castShadow = true;
   scene.add(stacks);
   splitBigMeshes(scene, 3000);
+  // decorado propio del circuito
+  const extra = TH.bones ? buildDinoScenery(scene, track, r, { cx, cz, distTrack, nearTunnel })
+    : TH.beach ? buildBeachScenery(scene, track, r, { distTrack }) : null;
 
   // nubes
   const cloudGeos = [];
@@ -479,6 +515,7 @@ export function buildWorld(scene, track) {
     },
     update(dt) {
       time += dt;
+      if (extra) extra.update(dt);
       for (const f of flags) f.a += Math.sin(time * 3 + f.phase) * 0.01;
       placeFlags();
       for (let i = 0; i < crowdDy.length; i++) crowdDy[i] += Math.sin(time * 9 + i * 1.7) * 0.006;

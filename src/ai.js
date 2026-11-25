@@ -4,6 +4,8 @@ import { RAIN_HIT_R } from './obstacles.js';
 import { DRIFT } from './vehicle.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
+// huecos entre las patas del saurópodo (patas en d = -6,5 y +5,5; ver obstacles.js)
+const LEG_GAPS = [-0.5, 9.9];
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
 // Derrape de la IA. Según la habilidad (fácil 0,7, normal 1, difícil 1,5): en qué parte de las
@@ -62,6 +64,9 @@ export class AIDriver {
     for (const n of ob.nets) { const d = rel(n.s); if (d > -4 && d < dist + 10) return true; }
     for (const b of ob.barrels) { if (!b.alive) continue; const d = rel(b.s); if (d > -3 && d < dist && Math.abs(b.d - v.d) < 7) return true; }
     for (const p of tr.pits) { const d0 = rel(p.s0), d1 = rel(p.s1); if (d1 > -4 && d0 < dist + 30) return true; }
+    // olas y patas del saurópodo (Bahía Pirata y Cañón Jurásico)
+    for (const w of tr.waves) { if (rel(w.s1) > -2 && rel(w.s0) < dist + 20) return true; }
+    for (const L of tr.legs) { const d = rel(L.s); if (d > -6 && d < dist + 20) return true; }
     const R = ob.rain;
     if (R && R.active.length && tr.ahead(R.s0 - dist - 20, v.s) < R.s1 - R.s0 + dist + 20) return true;
     for (const p of game.projectiles.list) {
@@ -152,6 +157,9 @@ export class AIDriver {
         return this.pitPick.lane;
       }
     }
+    // olas y patas del saurópodo (Bahía Pirata y Cañón Jurásico)
+    const sp = this.specialLane(s);
+    if (sp !== null) return sp;
     // charcos de barro: esquivarlos si se puede
     for (const m of tr.mud) {
       const ds = tr.ahead(s, m.s);
@@ -265,6 +273,32 @@ export class AIDriver {
       this.itemDelay = rand(0.8, 3);
     }
     return { steer, throttle, brake, item: useItem, drift };
+  }
+
+  // Olas: por el lado seco (si decide intentarlo en esta pasada). Saurópodo: por el hueco entre
+  // las patas más cercano a su carril (casi siempre; a veces se despista y se la pega).
+  specialLane(s) {
+    const tr = this.track;
+    if (!tr.waves.length && !tr.legs.length) return null;
+    for (const w of tr.waves) {
+      if (tr.ahead(w.s0 - 25, s) < w.s1 - w.s0 + 25) {
+        if (this.waveTry == null) this.waveTry = Math.random() < 0.3 + 0.2 * this.skill;
+        if (!this.waveTry) return null;
+        return w.side < 0 ? Math.max(3.5, Math.min(8, this.laneTarget)) : Math.min(-3.5, Math.max(-8, this.laneTarget));
+      }
+    }
+    this.waveTry = null;
+    for (const L of tr.legs) {
+      if (tr.ahead(s, L.s) < 70 || tr.ahead(L.s, s) < 6) {
+        if (this.legTry == null) this.legTry = Math.random() < 0.5 + 0.2 * this.skill;
+        if (!this.legTry) return null;
+        let best = LEG_GAPS[0];
+        for (const g of LEG_GAPS) if (Math.abs(g - this.lane) < Math.abs(best - this.lane)) best = g;
+        return best;
+      }
+    }
+    this.legTry = null;
+    return null;
   }
 
   // Zona de rodillos (troncos, bolas...) o de tráfico: carril por el que cruzarla sin que le

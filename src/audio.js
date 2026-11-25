@@ -145,6 +145,28 @@ export class Sound {
         this.noiseBurst(1.4, 1.0 * v, 'lowpass', 900, 60);
         this.osc('sine', 90, 30, 0.9, 0.9 * v);
         break;
+      // ---- Cañón Jurásico y Bahía Pirata (volúmenes prudentes) ----
+      case 'stampede': // retumbar de patas: golpes graves y polvo
+        for (let i = 0; i < 8; i++) {
+          const t0 = i * 0.11 + Math.random() * 0.04;
+          this.osc('sine', 70 + Math.random() * 15, 38, 0.16, 0.35 * v, t0);
+          this.noiseBurst(0.12, 0.18 * v, 'lowpass', 400, 120, 1, t0);
+        }
+        this.osc('sawtooth', 110, 70, 0.7, 0.06 * v, 0.1); // mugido grave de fondo
+        break;
+      case 'roar': // rugido grave del saurópodo
+        this.osc('sawtooth', 95, 60, 1.1, 0.12 * v);
+        this.osc('square', 70, 48, 1.1, 0.06 * v, 0.05);
+        this.noiseBurst(1.0, 0.18 * v, 'bandpass', 500, 220, 1.5);
+        break;
+      case 'cannon': // cañonazo lejano: golpe seco y retumbo
+        this.noiseBurst(0.9, 0.55 * v, 'lowpass', 700, 50);
+        this.osc('sine', 70, 28, 0.7, 0.55 * v);
+        break;
+      case 'surf': // ola que rompe: ruido que sube y se va
+        this.noiseBurst(1.6, 0.3 * v, 'bandpass', 500, 1600, 0.6);
+        this.noiseBurst(1.2, 0.15 * v, 'highpass', 2500, 4000, 0.5, 0.3);
+        break;
       case 'pickup':
         [660, 880, 1320].forEach((f, i) => this.osc('triangle', f, f, 0.12, 0.25 * v, i * 0.06));
         break;

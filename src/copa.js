@@ -1,8 +1,8 @@
-// Modo campeonato: los cinco circuitos seguidos, puntos por carrera y podio final.
+// Modo campeonato: los siete circuitos seguidos, puntos por carrera y podio final.
 import * as THREE from 'three';
 
 // orden de los circuitos de la copa
-export const COPA = ['clasico', 'selva', 'nieve', 'ciudad', 'volcan'];
+export const COPA = ['clasico', 'playa', 'selva', 'dinos', 'nieve', 'ciudad', 'volcan'];
 // puntos por puesto (6 camiones): 28 por carrera
 export const POINTS = [10, 7, 5, 3, 2, 1];
 

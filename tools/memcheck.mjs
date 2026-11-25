@@ -25,7 +25,7 @@ for (let r = 1; r <= rounds; r++) {
   const row = await page.evaluate(() => {
     const g = window.__mm;
     const out = {};
-    for (const c of ['clasico', 'nieve', 'volcan', 'selva', 'ciudad']) {
+    for (const c of ['clasico', 'nieve', 'volcan', 'selva', 'ciudad', 'dinos', 'playa']) {
       g.loadCircuit(c);
       g.time = 0; // misma posición de la cámara de portada en cada vuelta
       g.frame(0.05); g.frame(0.05);

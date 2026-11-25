@@ -32,6 +32,7 @@ const PLAYER_MSG = {
   tired: '¡NEUMATAZO!', barreled: '¡BARRILAZO!', rocketed: '¡COHETAZO!', rocketWarn: '¡TE SIGUE UN COHETE!',
   meteor: '¡ROCA DE FUEGO!', car: '¡CUIDADO CON EL TRÁFICO!', superDrift: '¡SUPERDERRAPE!', giant: '¡MODO GIGANTE!',
   crushed: '¡TE HAN CHAFADO!', crushTruck: '¡CHAFADO!',
+  ola: '¡OLA!', leg: '¡PATAZO!',
 };
 // Chafar a otro camión: cayéndole encima (siempre), siendo el gigante (siempre) o embistiéndole
 // siendo bastante más grande y más rápido que él en la dirección del choque.
@@ -1269,10 +1270,12 @@ class Game {
           case 'wall': near('bump', 0.6); break;
           case 'driftLevel': if (view) { this.sound.play('drift' + e.level, 0.8); this.input.rumble(view.who, 0.2 + 0.12 * e.level, 90); } break;
           case 'driftBoost': if (isP) this.sound.play('turbo', 0.55 + 0.1 * e.level); break;
+          case 'ola': near('splash', 0.7); shake(0.4); break;
+          case 'leg': near('crash'); shake(0.7); break;
         }
-        const msg = e.type === 'driftBoost' ? (e.level === 3 ? PLAYER_MSG.superDrift : null) : e.type === 'fallWater' ? pitText(this.track.theme, e.liquid) : e.type === 'log' ? this.track.theme.rollerHit : e.type === 'ball' ? this.track.theme.ballHit || PLAYER_MSG.ball : PLAYER_MSG[e.type];
+        const msg = e.type === 'driftBoost' ? (e.level === 3 ? PLAYER_MSG.superDrift : null) : e.type === 'fallWater' ? pitText(this.track.theme, e.liquid) : e.type === 'log' ? this.track.theme.rollerHit : e.type === 'ball' ? this.track.theme.ballHit || PLAYER_MSG.ball : this.track.theme.msg?.[e.type] || PLAYER_MSG[e.type];
         if (view && msg) {
-          const big = ['fallPit', 'fallWater', 'net', 'ball', 'boom', 'rocketWarn', 'meteor', 'car', 'giant', 'crushed'].includes(e.type);
+          const big = ['fallPit', 'fallWater', 'net', 'ball', 'boom', 'rocketWarn', 'meteor', 'car', 'giant', 'crushed', 'leg'].includes(e.type);
           view.hud.message(msg, big ? 1.6 : 1.0, big ? 'warn' : '');
         }
       }
@@ -1690,7 +1693,7 @@ class Game {
     const p = view.player;
     const tr = this.track;
     let f = 0;
-    if (tr.inTunnel(p.s)) f = clamp(Math.min(p.s - tr.tunnel.s0, tr.tunnel.s1 - p.s) / 30, 0, 1);
+    if (tr.inTunnel(p.s) && !tr.theme.tunnel.ribs) f = clamp(Math.min(p.s - tr.tunnel.s0, tr.tunnel.s1 - p.s) / 30, 0, 1);
     view.tunnelF += (f - view.tunnelF) * Math.min(1, dt * 4);
     const k = view.tunnelF;
     const w = this.world;

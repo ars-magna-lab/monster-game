@@ -108,12 +108,21 @@ for (const c of list) {
   // zonas de las mecánicas propias (lluvia de rocas, cruces con tráfico) y las aún reservadas
   for (const r of t.reserved) add('zona', r.s0, r.s1, `reservado: ${r.kind}`, { r });
   for (const m of t.meteors) {
-    add('zona', m.s0, m.s1, 'lluvia de rocas');
+    add('zona', m.s0, m.s1, c.theme.cannon ? 'cañonazos' : 'lluvia de rocas');
     if (m.sign !== undefined) add('cartel', m.sign, m.sign, 'cartel lluvia de rocas', { of: m.s0 });
   }
   for (const c of t.crossings) {
     add('zona', c.s0, c.s1, 'cruce');
     if (c.sign !== undefined) add('cartel', c.sign, c.sign, 'cartel cruce', { of: c.s0 });
+  }
+  // olas (Bahía Pirata) y patas del saurópodo (Cañón Jurásico): también con su tramo propio
+  for (const w of t.waves || []) {
+    add('zona', w.s0, w.s1, 'olas');
+    if (w.sign !== undefined) add('cartel', w.sign, w.sign, 'cartel olas', { of: w.s0 });
+  }
+  for (const g of t.legs || []) {
+    add('zona', g.s - 9, g.s + 9, 'saurópodo');
+    if (g.sign !== undefined) add('cartel', g.sign, g.sign, 'cartel saurópodo', { of: g.s - 9 });
   }
   for (const RO of PL.rollers) {
     const ss = RO.list.map(([rel]) => A(RO.seg, rel));
@@ -130,7 +139,7 @@ for (const c of list) {
   for (const n of PL.nets) { const s = A(...n); add('red', s - 6, s + 6); }
   for (const CR of PL.crush) {
     const ss = CR.rows.map(([rel]) => A(CR.seg, rel));
-    add('aplastar', Math.min(...ss) - 3, Math.max(...ss) + 3, `${c.theme.crush === 'snowman' ? 'muñecos' : 'coches'} ×${CR.rows.reduce((a, r) => a + r[1].length, 0)}`);
+    add('aplastar', Math.min(...ss) - 3, Math.max(...ss) + 3, `${{ snowman: 'muñecos', egg: 'huevos', sandcastle: 'castillos' }[c.theme.crush] || 'coches'} ×${CR.rows.reduce((a, r) => a + r[1].length, 0)}`);
     if (CR.sign) add('cartel', A(...CR.sign), A(...CR.sign), 'cartel aplastar', { of: Math.min(...ss) - 3 });
   }
   const barrels = [];

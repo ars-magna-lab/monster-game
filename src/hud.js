@@ -142,6 +142,22 @@ export class HUD {
       g.fillStyle = '#ffd400'; g.fillRect(-8, -2, 16, 4);
       g.restore();
     }
+    // olas: trazo azul por el lado del mar; saurópodo: punto verde con borde
+    for (const w of tr.waves || []) {
+      g.beginPath();
+      for (let s = w.s0; s <= w.s1; s += 3) {
+        const p = tr.pointAt(s, w.side * 16);
+        const [x, y] = this.toMap(p.x, p.z);
+        if (s === w.s0) g.moveTo(x, y); else g.lineTo(x, y);
+      }
+      g.strokeStyle = '#1aa0d8'; g.lineWidth = 5; g.stroke();
+    }
+    for (const L of tr.legs || []) {
+      const P = tr.pointAt(L.s);
+      const [lx, ly] = this.toMap(P.x, P.z);
+      g.beginPath(); g.arc(lx, ly, 5.5, 0, Math.PI * 2);
+      g.fillStyle = '#7fbf3f'; g.fill(); g.strokeStyle = 'rgba(0,0,0,0.7)'; g.lineWidth = 2; g.stroke();
+    }
     const st = tr.pointAt(0);
     const [sx, sy] = this.toMap(st.x, st.z);
     g.fillStyle = '#fff';
