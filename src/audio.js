@@ -1,6 +1,11 @@
 // Sonido sintetizado con WebAudio: motor, efectos y música.
 import { renderSong, songLoop, MUSIC_VERSION } from './music.js';
 
+// Retardo típico de un MP3 de LAME sin recortar (576 del codificador + 529 del
+// decodificador, a 44,1 kHz) y margen para decidir si el navegador lo recortó
+const MP3_DELAY = 1105 / 44100;
+const MP3_TRIM_TOL = 0.012;
+
 // Caché de la música renderizada en IndexedDB (si el navegador la permite)
 function idb() {
   return new Promise((res) => {
@@ -208,30 +213,68 @@ export class Sound {
   }
 
   // ---------- música (ver music.js) ----------
-  // Cada tema se renderiza una vez en segundo plano y después suena en bucle:
-  // así la música casi no gasta CPU durante la carrera.
+  // Cada tema suena en bucle desde un AudioBuffer, así la música casi no gasta
+  // CPU durante la carrera. Primero se intenta el MP3 ya renderizado
+  // (assets/musica, se regenera con «npm run musica»); si no se puede (file://,
+  // sin red...), se usa la caché de IndexedDB o se renderiza con el sintetizador.
   prepareMusic() {
-    if (this.songs || !this.ctx || typeof OfflineAudioContext === 'undefined') return;
+    if (this.songs || !this.ctx) return;
     this.songs = {};
-    const rate = 32000;
     const load = async (name) => {
       const lp = songLoop(name);
-      const key = `${name}-v${MUSIC_VERSION}-${rate}`;
       try {
-        let buf;
-        const hit = await cacheGet(key);
-        if (hit && hit.ch?.length === 2) {
-          buf = this.ctx.createBuffer(2, hit.ch[0].length, hit.rate);
-          hit.ch.forEach((d, c) => buf.copyToChannel(d, c));
-        } else {
-          buf = await renderSong(name, lp.seconds, rate);
-          cachePut(key, { rate, ch: [buf.getChannelData(0).slice(), buf.getChannelData(1).slice()] });
-        }
-        this.songs[name] = { buf, ...lp };
-      } catch { return; }
+        const mp3 = await this.loadMp3(name, lp);
+        this.songs[name] = mp3 || { buf: await this.renderOrCache(name, lp), ...lp };
+      } catch (e) {
+        console.warn('Música no disponible:', name, e?.message || e);
+        return;
+      }
       if (this.wantSong === name && !this.musicSrc) this.playSong(name);
     };
     load('menu').then(() => load('race'));
+  }
+
+  // Descarga y decodifica el MP3 del tema. Devuelve null si no se puede.
+  // La ruta es relativa a la página, para que funcione también en subcarpetas.
+  async loadMp3(name, lp) {
+    if (location.protocol === 'file:' || typeof fetch !== 'function') return null;
+    try {
+      const res = await fetch(`assets/musica/${name}-v${MUSIC_VERSION}.mp3`);
+      if (!res.ok) return null;
+      const data = await res.arrayBuffer();
+      // Safari antiguo solo admite la forma con callbacks de decodeAudioData
+      const buf = await new Promise((ok, ko) => {
+        const p = this.ctx.decodeAudioData(data, ok, ko);
+        if (p && p.catch) p.catch(ko);
+      });
+      // El MP3 lleva un retardo del codificador al principio. Chrome (y los
+      // navegadores que leen la cabecera LAME) lo recortan y el audio queda
+      // alineado con el original (medido en Chrome: 0 muestras de desfase y la
+      // misma longitud que el WAV de origen); si un navegador no lo recorta, el búfer sale
+      // más largo que el render original y desplazamos el bucle ese retardo.
+      const extra = buf.duration - lp.seconds;
+      const shift = extra > MP3_TRIM_TOL ? MP3_DELAY : 0;
+      if (buf.duration < lp.loopEnd + shift) return null;
+      return { buf, loopStart: lp.loopStart + shift, loopEnd: lp.loopEnd + shift, seconds: lp.seconds, from: 'mp3' };
+    } catch {
+      return null;
+    }
+  }
+
+  // Camino de reserva: caché de IndexedDB o render con el sintetizador
+  async renderOrCache(name, lp) {
+    if (typeof OfflineAudioContext === 'undefined') throw new Error('sin OfflineAudioContext');
+    const rate = 32000;
+    const key = `${name}-v${MUSIC_VERSION}-${rate}`;
+    const hit = await cacheGet(key);
+    if (hit && hit.ch?.length === 2) {
+      const buf = this.ctx.createBuffer(2, hit.ch[0].length, hit.rate);
+      hit.ch.forEach((d, c) => buf.copyToChannel(d, c));
+      return buf;
+    }
+    const buf = await renderSong(name, lp.seconds, rate);
+    cachePut(key, { rate, ch: [buf.getChannelData(0).slice(), buf.getChannelData(1).slice()] });
+    return buf;
   }
 
   playSong(name) {
