@@ -106,7 +106,8 @@ terminan el campeonato. Se guardan las copas ganadas y la mejor puntuación. Val
     para aplastar y una alcantarilla con cocodrilos.
   - **Cañón Jurásico** (2,2 km): un cañón prehistórico de roca roja. Curvas largas para derrapar, una zona
     revirada con charcas de alquitrán, dos estampidas de tricerátops que cruzan la pista (hay que colarse por
-    un hueco), un saurópodo gigante entre cuyas patas hay que pasar, un foso de alquitrán y un túnel por dentro
+    un hueco), un saurópodo gigante entre cuyas patas hay que pasar, dos tiranosaurios que muerden la mitad del camino
+    de su lado (avisan con un rugido y una marca roja en el suelo), un foso de alquitrán y un túnel por dentro
     del esqueleto de un dinosaurio.
   - **Bahía Pirata** (2,0 km): arena y mar. Olas que suben por la playa y mojan medio camino (el otro lado queda
     seco), un muelle con salto sobre los tiburones, la vuelta al faro, castillos de arena para chafar, los
@@ -127,6 +128,9 @@ terminan el campeonato. Se guardan las copas ganadas y la mejor puntuación. Val
   Los camiones grandes también chafan a los pequeños si los embisten de frente y bastante más rápido: el Mamut
   a casi todos, el Megalodón y el Dragón al Escorpión y al Relámpago, y la Trituradora al Relámpago. El chafado
   se queda aplastado y parado un momento, y después no lo pueden volver a chafar durante unos segundos.
+- **La copa en la meta**: cuando el primero lleva media última vuelta, aparece una copa dorada sobre la meta. El
+  primero que cruza se la lleva y la levanta; después esperan la de plata y la de bronce para el segundo y el
+  tercero.
 - Récords guardados en el navegador.
 
 ## Desarrollo
@@ -149,6 +153,7 @@ node tools/copa.mjs       # corre un campeonato entero con piloto automático
 node tools/salida.mjs     # prueba la salida: motor ahogado, salida perfecta y cámara sin tirones
 node tools/derrape.mjs    # prueba el derrape: niveles, turbos, cancelaciones, controles y el de la IA
 node tools/remontada.mjs  # prueba el modo gigante (reparto y efecto) y chafar camiones
+node tools/meta.mjs       # prueba las copas de la meta (oro, plata y bronce)
 node tools/bench.mjs      # mide cuánto cuesta cada fotograma sin tarjeta gráfica (tarda: úsalo con el equipo libre)
 node tools/circuits.mjs --medir --carreras 3 --vueltas 2 --dif normal   # cómo se defiende la IA y equilibrio de objetos
 ```
