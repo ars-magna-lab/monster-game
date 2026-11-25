@@ -33,7 +33,17 @@ const PLAYER_MSG = {
   meteor: '¡ROCA DE FUEGO!', car: '¡CUIDADO CON EL TRÁFICO!', superDrift: '¡SUPERDERRAPE!', giant: '¡MODO GIGANTE!',
   crushed: '¡TE HAN CHAFADO!', crushTruck: '¡CHAFADO!',
 };
-const CRUSH_START = 3; // segundos de carrera sin chafar (salida)
+// Chafar a otro camión: cayéndole encima (siempre), siendo el gigante (siempre) o embistiéndole
+// siendo bastante más grande y más rápido que él en la dirección del choque.
+const CRUSH_RULE = {
+  start: 3,       // segundos de carrera sin chafar (en la parrilla van pegados)
+  ratio: 1.16,    // tamaño mínimo del grande respecto al pequeño
+  ratioMax: 1.5,  // con esta diferencia (o más), el chafado dura lo máximo
+  closing: 8,     // m/s mínimos a los que el grande se echa encima del pequeño (más que él)
+  push: 4,        // y lo que va él mismo hacia el pequeño
+  head: 0.5,      // parte de su velocidad que va hacia el pequeño (0,5: choque a menos de 60° de su rumbo)
+  fallH: 1.2,     // el de arriba tiene que venir de por encima del techo (× tamaño del de abajo)
+};
 // Modo gigante: solo a los últimos, con la carrera ya estirada, y nunca dos a la vez
 const GIANT_ROLL = { last: 0.45, second: 0.15, minTime: 12, minGap: 120, minTrucks: 3 };
 // Colores de las chispas del derrape (y de la barra de carga) por nivel: humo, azul, naranja y morado
@@ -1125,6 +1135,7 @@ class Game {
         const d2 = dx * dx + dz * dz;
         const R2 = RADIUS * (a.size + b.size);
         if (d2 > R2 * R2 || Math.abs(a.y - b.y) > 2.8 * Math.max(a.size, b.size)) continue;
+        if (a.squash > 0 || b.squash > 0) continue; // chafado, queda plano: los demás le pasan por encima
         const d = Math.sqrt(d2) || 0.01;
         const nx = dx / d, nz = dz / d;
         const over = R2 - d;
@@ -1134,7 +1145,7 @@ class Game {
         b.x += nx * over * (ma / (ma + mb)); b.z += nz * over * (ma / (ma + mb));
         const vn = (b.vx - a.vx) * nx + (b.vz - a.vz) * nz;
         const cr = this.crushPair(a, b, nx, nz, d / R2);
-        if (cr && cr.small.crush(cr.big, cr.dur)) {
+        if (cr && cr.small.crush(cr.big, cr.dur, cr.how)) {
           // el que chafa sigue casi igual; el chafado se queda donde está, casi parado
           cr.big.vx *= 0.95; cr.big.vz *= 0.95;
           cr.small.vx *= 0.2; cr.small.vz *= 0.2;
@@ -1167,11 +1178,25 @@ class Game {
 
   // ¿Chafa uno al otro en este contacto? Devuelve { big, small, dur } o null. n: de a hacia b.
   crushPair(a, b, nx, nz, near) {
-    if (this.raceTime < CRUSH_START) return null; // en la parrilla van pegados
+    if (this.raceTime < CRUSH_RULE.start) return null;
     // el gigante chafa a cualquiera que toque
-    if (a.giant > 0 && b.crushable) return { big: a, small: b, dur: CRUSH.max };
-    if (b.giant > 0 && a.crushable) return { big: b, small: a, dur: CRUSH.max };
-    return null;
+    if (a.giant > 0 && b.crushable) return { big: a, small: b, dur: CRUSH.max, how: 'giant' };
+    if (b.giant > 0 && a.crushable) return { big: b, small: a, dur: CRUSH.max, how: 'giant' };
+    // caerle encima: en el aire, bajando y llegando desde más arriba que su techo
+    for (const [up, lo] of [[a, b], [b, a]]) {
+      if (!up.onGround && up.vy < -1 && up.y - lo.y > CRUSH_RULE.fallH * lo.size && near < 0.9 && lo.crushable) return { big: up, small: lo, dur: CRUSH.max, fall: true, how: 'fall' };
+    }
+    // embestir siendo bastante más grande y más rápido en la dirección del choque (rozarse en paralelo no vale)
+    const [big, small, sg] = a.baseSize >= b.baseSize ? [a, b, 1] : [b, a, -1];
+    const ratio = big.baseSize / small.baseSize;
+    // al que ya está aturdido (le ha dado un tronco, un barril...) se le empuja, no se le chafa
+    if (ratio < CRUSH_RULE.ratio || !small.crushable || small.stun > 0 || big.state !== 'ok' || big.squash > 0 || big.stun > 0) return null;
+    // el grande tiene que ir hacia el pequeño (si es el pequeño el que le da por detrás, no le chafa)
+    const bigIn = (big.vx * nx + big.vz * nz) * sg, smallIn = (small.vx * nx + small.vz * nz) * sg; // n va de a hacia b
+    // y de frente: el choque tiene que ir más o menos hacia donde va el grande (un golpe de lado empuja)
+    if (bigIn < CRUSH_RULE.push || bigIn < CRUSH_RULE.head * big.speed || bigIn - smallIn < CRUSH_RULE.closing) return null;
+    const k = clamp((ratio - CRUSH_RULE.ratio) / (CRUSH_RULE.ratioMax - CRUSH_RULE.ratio), 0, 1);
+    return { big, small, dur: CRUSH.min + (CRUSH.max - CRUSH.min) * k, how: 'size' };
   }
 
   rank() {

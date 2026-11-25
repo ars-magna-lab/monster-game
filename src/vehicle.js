@@ -107,15 +107,16 @@ export class Vehicle {
     return this.state === 'ok' && this.invuln <= 0 && this.giant <= 0 && this.squash <= 0 && this.crushImmune <= 0;
   }
 
-  // Le chafan: se aplasta y se queda casi parado dur segundos. by: quien le chafa.
-  crush(by, dur) {
+  // Le chafan: se aplasta y se queda casi parado dur segundos. by: quien le chafa;
+  // how: 'giant' (el gigante), 'fall' (le cae encima) o 'size' (le embiste uno más grande).
+  crush(by, dur, how = 'size') {
     if (!this.crushable) return false;
     this.squash = dur; this.squashDur = dur; this.squashT = 0;
     this.crushImmune = dur + CRUSH.immune;
     if (this.drift) { this.endDrift(false); this.driftLock = true; }
     this.boost = 0;
-    this.events.push({ type: 'crushed', by });
-    by.events.push({ type: 'crushTruck', victim: this });
+    this.events.push({ type: 'crushed', by, how });
+    by.events.push({ type: 'crushTruck', victim: this, how });
     return true;
   }
 
