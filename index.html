@@ -79,6 +79,10 @@
     <div id="truck-desc"></div>
     <div id="truck-stats"></div>
     <div class="opts">
+      <div class="opt opt-cup"><span>Modo</span>
+        <button data-cup="0">Carrera</button><button data-cup="1">Campeonato</button>
+      </div>
+      <p id="cup-route" class="circuit-desc cup-route hidden"></p>
       <div class="opt opt-circuit"><span>Circuito</span><span id="circuit-opts" class="circuit-opts"></span></div>
       <p id="circuit-desc" class="circuit-desc"></p>
       <div class="opt"><span>Vueltas</span>
@@ -117,15 +121,52 @@
 
 <!-- Resultados -->
 <div id="screen-results" class="screen dim hidden">
+  <div id="res-round" class="cup-badge hidden"></div>
   <h2 id="res-title">¡HAS GANADO!</h2>
-  <table id="res-table"></table>
+  <div class="res-tables">
+    <table id="res-table"></table>
+    <div id="cup-general" class="hidden">
+      <h3>General</h3>
+      <table id="cup-table" class="cup-table"></table>
+    </div>
+  </div>
   <div id="res-extra"></div>
   <div class="row">
     <button id="btn-again" class="big-btn">Revancha</button>
+    <button id="btn-cup-next" class="big-btn hidden">Siguiente circuito</button>
   </div>
   <div class="row">
     <button id="btn-change" class="small-btn">Cambiar camión</button>
     <button id="btn-menu" class="small-btn">Menú</button>
+    <button id="btn-cup-quit" class="small-btn hidden">Abandonar</button>
+  </div>
+</div>
+
+<!-- Campeonato: aviso mientras se carga el circuito siguiente -->
+<div id="screen-cupnext" class="screen hidden">
+  <div id="cupnext-round" class="cup-badge"></div>
+  <h2 id="cupnext-name"></h2>
+  <p class="cupnext-wait">Cargando circuito…</p>
+</div>
+
+<!-- Campeonato: rótulo de la cuenta atrás -->
+<div id="cup-banner" class="hidden"></div>
+
+<!-- Campeonato: podio final -->
+<div id="screen-podium" class="screen hidden">
+  <div id="confetti" class="confetti"></div>
+  <div class="podium-head">
+    <h2 id="podium-title"></h2>
+    <div id="podium-sub"></div>
+  </div>
+  <div class="panel podium-panel">
+    <h3>Clasificación final</h3>
+    <table id="podium-table" class="cup-table"></table>
+    <div id="podium-record"></div>
+    <div class="row">
+      <button id="btn-cup-again" class="big-btn">Otro campeonato</button>
+      <button id="btn-cup-menu" class="small-btn">Menú</button>
+    </div>
   </div>
 </div>
 
