@@ -282,7 +282,7 @@ export class AIDriver {
     if (!tr.waves.length && !tr.legs.length) return null;
     for (const w of tr.waves) {
       if (tr.ahead(w.s0 - 25, s) < w.s1 - w.s0 + 25) {
-        if (this.waveTry == null) this.waveTry = Math.random() < 0.15 + 0.2 * this.skill;
+        if (this.waveTry == null) this.waveTry = Math.random() < 0.3 + 0.2 * this.skill;
         if (!this.waveTry) return null;
         return w.side < 0 ? Math.max(3.5, Math.min(8, this.laneTarget)) : Math.min(-3.5, Math.max(-8, this.laneTarget));
       }
