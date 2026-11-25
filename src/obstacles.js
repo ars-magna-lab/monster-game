@@ -1,7 +1,7 @@
 // Obstáculos y elementos de la pista que se mueven o interactúan con los camiones.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { LIMIT, ROAD_HALF, STREET_GAP } from './track.js';
+import { LIMIT, ROAD_HALF, STREET_GAP, WAVE, waveEnv } from './track.js';
 import { placeOnTrack } from './trackMesh.js';
 import { HALF_W } from './vehicle.js';
 import * as T from './textures.js';
@@ -38,6 +38,10 @@ export class Obstacles {
     this.build();
     this.buildRain();
     this.buildTraffic();
+    // olas (Bahía Pirata) y saurópodo (Cañón Jurásico)
+    this.waveZones = []; this.legs = [];
+    this.buildWaves();
+    this.buildLegs();
     // lo que la IA esquiva eligiendo carril (rodillos y tráfico: misma cuenta en rollerD)
     this.dodge = [...this.logs, ...this.traffic];
   }
@@ -109,7 +113,7 @@ export class Obstacles {
         m.castShadow = true;
         m.position.y = roller.r;
         h.add(m);
-        this.logs.push({ s, period, phase, amp: 12.5, r: roller.r, len: roller.len, mesh: m, d: 0, vd: 0, ball: roller.ball });
+        this.logs.push({ s, period, phase, amp: 12.5, r: roller.r, len: roller.len, mesh: m, d: 0, vd: 0, ball: roller.ball, walk: roller.walk });
       });
       if (RO.sign) this.signs(TH.rollerName, '#e0a100', A(RO.sign[0], RO.sign[1]));
     }
@@ -226,14 +230,14 @@ export class Obstacles {
       for (const [rel, ds] of CR.rows) {
         for (const d of ds) {
           const s = A(CR.seg, rel) + rand(-1, 1);
-          const car = TH.crush === 'snowman' ? makeSnowman() : makeJunkCar(carColors[ci++ % carColors.length]);
+          const car = TH.crush === 'snowman' ? makeSnowman() : TH.crush === 'egg' ? makeEgg(ci++) : TH.crush === 'sandcastle' ? makeSandcastle(ci++) : makeJunkCar(carColors[ci++ % carColors.length]);
           placeOnTrack(car.group, tr, s, d, tr.baseAt(s) + 0.03);
           car.group.rotation.y += rand(-0.25, 0.25) + (Math.random() < 0.3 ? Math.PI : 0);
           this.group.add(car.group);
           this.cars.push({ s, d, ...car, crushed: false, t: 0, timer: 0 });
         }
       }
-      if (CR.sign) this.signs('¡APLASTA!', '#2ecc71', A(CR.sign[0], CR.sign[1]));
+      if (CR.sign) this.signs(TH.crushName || '¡APLASTA!', '#2ecc71', A(CR.sign[0], CR.sign[1]));
     }
 
     // ---------- Barriles explosivos (en el túnel) ----------
@@ -287,7 +291,7 @@ export class Obstacles {
       pit.crocFree = free.length ? free : [[-LIMIT + 2.5, LIMIT - 2.5]];
       const n = Math.max(2, Math.floor(6 / crocPits.length) + (k < 6 % crocPits.length ? 1 : 0));
       for (let i = 0; i < n; i++) {
-        const c = makeCroc();
+        const c = TH.sharks ? makeShark() : makeCroc();
         const croc = {
           ...c, pit, s: 0, d: 0, heading: rand(0, Math.PI * 2),
           ts: 0, td: 0, timer: 0, jaw: 0, snapT: rand(0, 3), wag: rand(0, 6), target: null,
@@ -387,7 +391,8 @@ export class Obstacles {
       o.d = o.amp * tri;
       o.vd = ((o.amp * 4) / o.period) * (u < 0.5 ? 1 : -1);
       o.mesh.position.x = -o.d;
-      o.mesh.rotation.z += (o.vd / o.r) * dt;
+      if (o.walk) o.walk(o.mesh, t, o.vd); // cangrejo: camina de lado sin rodar
+      else o.mesh.rotation.z += (o.vd / o.r) * dt;
       const top = tr.baseAt(o.s) + o.r * 2;
       for (const v of vehicles) {
         if (v.state !== 'ok') continue;
@@ -531,6 +536,8 @@ export class Obstacles {
     // lluvia de rocas y tráfico (solo con camiones cerca)
     this.updateRain(dt, vehicles);
     this.updateTraffic(dt, vehicles);
+    this.updateWaves(dt, vehicles);
+    this.updateLegs(dt, vehicles);
   }
 
   // ---------- Lluvia de rocas de fuego (volcán) ----------
@@ -558,16 +565,23 @@ export class Obstacles {
     }
     tail.setAttribute('color', new THREE.Float32BufferAttribute(tc, 3));
     tail.deleteAttribute('uv'); rock.deleteAttribute('uv');
-    const meteorGeo = mergeGeometries([rock, tail]);
+    let meteorGeo = mergeGeometries([rock, tail]);
     rock.dispose(); tail.dispose();
-    const meteorMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
+    let meteorMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
+    // Bahía Pirata: balas de cañón que salen del barco pirata
+    const ship = this.track.theme.cannon ? this.buildShip(z) : null;
+    if (ship) {
+      meteorGeo.dispose(); meteorMat.dispose();
+      meteorGeo = new THREE.SphereGeometry(1.1, 12, 9);
+      meteorMat = new THREE.MeshStandardMaterial({ color: 0x1c1c20, metalness: 0.6, roughness: 0.35 });
+    }
     // diana: aro amarillo del tamaño del golpe y disco rojo que crece hasta llenarlo
     const decal = { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 };
     const ringGeo = new THREE.RingGeometry(RAIN_HIT_R - 0.7, RAIN_HIT_R, 28).rotateX(-Math.PI / 2);
     const discGeo = new THREE.CircleGeometry(RAIN_HIT_R - 0.7, 20).rotateX(-Math.PI / 2);
     const discMat = new THREE.MeshBasicMaterial({ color: 0xd42000, ...decal });
     const scorchGeo = new THREE.CircleGeometry(3.0, 16).rotateX(-Math.PI / 2);
-    const scorchMat = new THREE.MeshBasicMaterial({ color: 0x2e1c14, ...decal });
+    const scorchMat = new THREE.MeshBasicMaterial({ color: ship ? 0xa8875a : 0x2e1c14, ...decal });
     const free = [], scorch = [];
     for (let i = 0; i < RAIN_POOL; i++) {
       const m = new THREE.Mesh(meteorGeo, meteorMat);
@@ -582,9 +596,9 @@ export class Obstacles {
       free.push({ rock: m, mark, disc, ringMat });
       scorch.push({ mesh: sc, t: 0 });
     }
-    this.rain = { s0: z.s0, s1: z.s1, group: g, timer: 0.3, active: [], free, scorch, on: false, aimed: new Map(), emitT: 0 };
+    this.rain = { s0: z.s0, s1: z.s1, group: g, timer: 0.3, active: [], free, scorch, on: false, aimed: new Map(), emitT: 0, ship };
     g.visible = false;
-    if (z.sign !== undefined) this.signs('¡LLUVIA DE ROCAS!', '#ff6a00', z.sign);
+    if (z.sign !== undefined) this.signs(this.track.theme.rainName || '¡LLUVIA DE ROCAS!', '#ff6a00', z.sign);
   }
 
   // Lanza una roca: unas apuntadas un poco por delante de algún camión que esté en la zona
@@ -616,10 +630,13 @@ export class Obstacles {
     const P = tr.pointAt(s, d);
     m.s = s; m.d = d; m.t = 0; m.T = T;
     m.x = P.x; m.z = P.z; m.y = tr.baseAt(s);
-    // cae en diagonal desde lo alto, del lado del volcán
-    m.sx = P.x + 22; m.sy = m.y + 62; m.sz = P.z - 16;
-    const back = new THREE.Vector3(m.sx - m.x, m.sy - m.y, m.sz - m.z).normalize();
-    m.rock.quaternion.setFromUnitVectors(UP, back);
+    if (R.ship) this.fireCannon(m);
+    else {
+      // cae en diagonal desde lo alto, del lado del volcán
+      m.sx = P.x + 22; m.sy = m.y + 62; m.sz = P.z - 16;
+      const back = new THREE.Vector3(m.sx - m.x, m.sy - m.y, m.sz - m.z).normalize();
+      m.rock.quaternion.setFromUnitVectors(UP, back);
+    }
     m.rock.visible = true;
     m.mark.position.set(P.x, m.y + 0.09, P.z);
     m.mark.visible = true;
@@ -654,18 +671,20 @@ export class Obstacles {
       const m = R.active[i];
       m.t += dt;
       const f = Math.min(1, m.t / m.T);
-      const x = m.sx + (m.x - m.sx) * f, y = m.sy + (m.y + 1.2 - m.sy) * f, z = m.sz + (m.z - m.sz) * f;
+      const x = m.sx + (m.x - m.sx) * f, z = m.sz + (m.z - m.sz) * f;
+      const y = m.sy + (m.y + 1.2 - m.sy) * f + (R.ship ? 4 * R.ship.arc * f * (1 - f) : 0); // las balas van en parábola
       m.rock.position.set(x, y, z);
       m.disc.scale.setScalar(0.05 + 0.95 * f);
       // el último momento: el aro parpadea
       if (m.T - m.t < 0.4) m.ringMat.color.setHex(Math.floor(m.t * 14) % 2 ? 0xff2000 : 0xffffff);
-      if (emit) fx.glow.emit({ x, y, z, vx: (Math.random() - 0.5) * 3, vy: 2, vz: (Math.random() - 0.5) * 3, life: 0.45, size: 2.2, grow: -2, color: [1, 0.5, 0.12], alpha: 1, gravity: 0, drag: 2 });
+      if (emit && !R.ship) fx.glow.emit({ x, y, z, vx: (Math.random() - 0.5) * 3, vy: 2, vz: (Math.random() - 0.5) * 3, life: 0.45, size: 2.2, grow: -2, color: [1, 0.5, 0.12], alpha: 1, gravity: 0, drag: 2 });
       if (m.t < m.T) continue;
       this.meteorImpact(m, vehicles);
       m.rock.visible = m.mark.visible = false;
       R.active.splice(i, 1);
       R.free.push(m);
     }
+    if (R.ship) this.updateShip(dt);
     for (const c of R.scorch) {
       if (c.t <= 0) continue;
       c.t -= dt;
@@ -678,6 +697,7 @@ export class Obstacles {
     const game = this.game, R = this.rain;
     game.fx.explosion(m.x, m.y, m.z);
     game.boom(m.x, m.y, m.z);
+    if (R.ship) game.fx.dust(m.x, m.y, m.z, 0, 0, [0.93, 0.84, 0.62], 14, 3.2); // salpicadura de arena
     for (const v of vehicles) {
       if (v.state !== 'ok') continue;
       const dx = v.x - m.x, dz = v.z - m.z;
@@ -705,7 +725,8 @@ export class Obstacles {
   buildTraffic() {
     const tr = this.track;
     if (!tr.crossings.length) return;
-    const A = trafficAssets();
+    const herd = tr.theme.cross === 'trike';
+    const A = herd ? herdAssets() : trafficAssets();
     this.trafficAssets = A;
     tr.crossings.forEach((c, ci) => {
       const h = this.holder(c.s);
@@ -726,7 +747,8 @@ export class Obstacles {
       gate.add(st, arms, new THREE.Mesh(A.kerbGeo, A.kerbMat));
       h.add(new THREE.Mesh(A.lampGeoA, A.lampA), new THREE.Mesh(A.lampGeoB, A.lampB));
       // coches: posiciones fijas en un circuito cerrado de P metros (vuelven a salir por el otro lado)
-      const kinds = ci % 2 ? ['car', 'car', 'van', 'car', 'car'] : ['car', 'bus', 'car', 'car', 'car'];
+      const kinds = herd ? (ci % 2 ? ['trike', 'trike', 'baby', 'trike', 'baby'] : ['trike', 'baby', 'trike', 'trike', 'trike'])
+        : ci % 2 ? ['car', 'car', 'van', 'car', 'car'] : ['car', 'bus', 'car', 'car', 'car'];
       const P = 2 * TRAFFIC_D;
       const total = kinds.reduce((a, k) => a + A.size[k].len, 0);
       const gap = (P - total) / kinds.length;
@@ -748,7 +770,7 @@ export class Obstacles {
         cars.push(o);
         this.traffic.push(o);
       });
-      if (c.sign !== undefined) this.signs('¡CRUCE!', '#ffcc00', c.sign);
+      if (c.sign !== undefined) this.signs(tr.theme.crossName || '¡CRUCE!', '#ffcc00', c.sign);
       this.crossings.push({ c, holder: h, cars, on: true, hornT: 0 });
     });
   }
@@ -765,6 +787,7 @@ export class Obstacles {
       for (const o of X.cars) {
         o.d = this.rollerD(o, 0);
         o.mesh.position.x = -o.d;
+        if (A.herd) o.mesh.position.y = Math.abs(Math.sin(this.time * 7 + o.off)) * 0.25; // trote
         if (Math.abs(o.d) > LIMIT + o.r + HALF_W) continue;
         for (const v of vehicles) {
           if (v.state !== 'ok') continue;
@@ -786,7 +809,7 @@ export class Obstacles {
         const car = X.cars.find((o) => o.dir * o.d < -LIMIT + 2 && o.dir * o.d > -45);
         if (car) {
           const P = tr.pointAt(car.s, car.d);
-          game.sound3d('horn', P.x, P.z, 0.55);
+          game.sound3d(A.herd ? 'stampede' : 'horn', P.x, P.z, 0.55);
           X.hornT = 3.5;
           break;
         }
@@ -797,6 +820,170 @@ export class Obstacles {
       const ph = Math.floor(this.time * 2.4) % 2;
       A.lampA.color.setHex(ph ? 0xffb000 : 0x3a2a10);
       A.lampB.color.setHex(ph ? 0x3a2a10 : 0xffb000);
+    }
+  }
+
+  // ---------- Barco pirata (Bahía Pirata) ----------
+  // Fondeado en el mar frente a la zona de cañonazos, de costado; cada bala sale de una de sus
+  // troneras con un fogonazo y una nube de humo.
+  buildShip(z) {
+    const tr = this.track;
+    const sm = (z.s0 + z.s1) / 2;
+    const g = new THREE.Group();
+    placeOnTrack(g, tr, sm, -190, -0.6);
+    g.add(new THREE.Mesh(pirateShipGeo(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, side: THREE.DoubleSide })));
+    g.children[0].castShadow = true;
+    this.group.add(g);
+    g.updateMatrixWorld(true);
+    // troneras del costado que mira a la pista (x local negativo)
+    const ports = [-9, -4.5, 0, 4.5, 9].map((zz) => new THREE.Vector3(-6.2, 3.2, zz).applyMatrix4(g.matrixWorld));
+    const flash = new THREE.Mesh(new THREE.SphereGeometry(2.2, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffb030, transparent: true, opacity: 0.95, fog: false }));
+    flash.visible = false;
+    this.group.add(flash);
+    return { g, ports, flash, flashT: 0, arc: 24, t: 0 };
+  }
+
+  fireCannon(m) {
+    const R = this.rain, S = R.ship, game = this.game;
+    const p = S.ports[Math.floor(Math.random() * S.ports.length)];
+    m.sx = p.x; m.sy = p.y; m.sz = p.z;
+    S.flash.position.copy(p);
+    S.flash.visible = true; S.flashT = 0.22;
+    game.fx.dust(p.x, p.y, p.z, 0, 0, [0.75, 0.75, 0.75], 6, 4);
+    // el cañonazo se oye flojo, y solo si un jugador anda cerca de la zona
+    const tr = this.track;
+    if (game.humans?.some((v) => tr.ahead(R.s0 - 80, v.s) < R.s1 - R.s0 + 100)) game.sound.play('cannon', 0.4);
+  }
+
+  updateShip(dt) {
+    const S = this.rain.ship;
+    S.t += dt;
+    S.g.rotation.z = Math.sin(S.t * 0.8) * 0.03;
+    if (S.flashT > 0) {
+      S.flashT -= dt;
+      S.flash.scale.setScalar(1 + (0.22 - S.flashT) * 6);
+      S.flash.material.opacity = Math.max(0, S.flashT / 0.22);
+      if (S.flashT <= 0) S.flash.visible = false;
+    }
+  }
+
+  // ---------- Olas (Bahía Pirata) ----------
+  // Lenguas de agua que suben por la arena desde el mar y entran en la pista por el lado del
+  // mar (Track.waveAt). Mientras están dentro, esa franja frena como el barro; el otro lado
+  // queda siempre seco. Cada lengua es una malla con su borde de espuma que se estira de lado.
+  buildWaves() {
+    const tr = this.track;
+    if (!tr.waves.length) return;
+    const seg = 10;
+    const geo = new THREE.BufferGeometry();
+    const pos = [], col = [], idx = [];
+    const deep = new THREE.Color(0x22b8cc), light = new THREE.Color(0x8ee6ee), foam = new THREE.Color(0xffffff);
+    const rows = [[0, deep], [0.8, light], [1, foam]];
+    for (let i = 0; i <= seg; i++) {
+      const zz = -WAVE.lobe / 2 + (i / seg) * WAVE.lobe;
+      const shape = Math.sqrt(Math.max(0, Math.sin(Math.PI * (i / seg))));
+      for (const [t, c] of rows) { pos.push(shape * t, 0, zz); col.push(c.r, c.g, c.b); }
+    }
+    for (let i = 0; i < seg; i++) for (let r = 0; r < rows.length - 1; r++) {
+      const a = i * rows.length + r, b = a + rows.length;
+      idx.push(a, b, a + 1, a + 1, b, b + 1);
+    }
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    geo.setIndex(idx);
+    geo.computeVertexNormals();
+    const mat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.88, side: THREE.DoubleSide, depthWrite: false });
+    for (const w of tr.waves) {
+      const lobes = [];
+      for (let s = w.s0; s < w.s1 - 1; s += WAVE.lobe) {
+        const h = this.holder(s + WAVE.lobe / 2, w.side * LIMIT, 0.1);
+        const m = new THREE.Mesh(geo, mat);
+        m.renderOrder = 1;
+        h.add(m);
+        lobes.push({ s: s + WAVE.lobe / 2, mesh: m });
+      }
+      if (w.sign !== undefined) this.signs('¡OLAS!', '#1aa0d8', w.sign);
+      this.waveZones.push({ w, lobes, wasIn: false });
+    }
+  }
+
+  updateWaves(dt, vehicles) {
+    if (!this.waveZones.length) return;
+    const tr = this.track, game = this.game;
+    tr.time = this.time;
+    for (const Z of this.waveZones) {
+      const w = Z.w;
+      const on = this.anyNear(vehicles, w.s0, w.s1);
+      for (const L of Z.lobes) {
+        if (!on) { L.mesh.visible = false; continue; }
+        // la lengua entera: lo que entra en su centro (forma 1) más lo que espera fuera
+        const k = (WAVE.reach + WAVE.out) * waveEnv((((this.time / WAVE.period - Math.floor((L.s - w.s0) / WAVE.lobe) * WAVE.lag) % 1) + 1) % 1);
+        L.mesh.visible = k > 0.3;
+        // (x local = -d: el agua espera a WAVE.out m de la barrera y entra k·forma metros)
+        L.mesh.position.x = -w.side * WAVE.out;
+        L.mesh.scale.x = w.side * k;
+      }
+      if (!on) continue;
+      // golpe de agua: un aviso al entrar en la franja mojada
+      for (const v of vehicles) {
+        const inZone = v.state === 'ok' && v.onGround && tr.ahead(w.s0, v.s) < w.s1 - w.s0;
+        const wet = inZone && (w.side < 0 ? v.d + LIMIT : LIMIT - v.d) < tr.waveAt(w, v.s, this.time);
+        if (wet && !v.waveWet) {
+          v.events.push({ type: 'ola' });
+          game.fx.splash(v.x, v.y + 0.5, v.z, 30);
+        }
+        v.waveWet = wet;
+      }
+      // rumor de la ola al entrar (la primera lengua), flojo y solo con un jugador cerca
+      const u = (((this.time / WAVE.period) % 1) + 1) % 1;
+      const isIn = u > 0.3 && u < 0.45;
+      if (isIn && !Z.wasIn && game.humans?.some((v) => tr.ahead(w.s0 - 60, v.s) < w.s1 - w.s0 + 60)) game.sound.play('surf', 0.45);
+      Z.wasIn = isIn;
+    }
+  }
+
+  // ---------- El gran saurópodo (Cañón Jurásico) ----------
+  // Plantado de través sobre la pista: patas delanteras en d = -6,5 y traseras en d = +5,5
+  // (dos columnas en cada lado, a ±2,6 m). Se pasa por debajo de la tripa, entre las patas, o
+  // por los dos pasillos de los lados. Quien choca con una pata rebota hacia fuera.
+  buildLegs() {
+    const tr = this.track;
+    if (!tr.legs.length) return;
+    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, flatShading: true });
+    const geo = sauropodGeo();
+    for (const L of tr.legs) {
+      const h = this.holder(L.s);
+      const m = new THREE.Mesh(geo, mat);
+      m.castShadow = true;
+      h.add(m);
+      L.cols = [];
+      for (const d of SAURO_LEGS) for (const ds of [-2.6, 2.6]) L.cols.push({ s: tr.wrap(L.s + ds), d });
+      L.mesh = m;
+      if (L.sign !== undefined) this.signs('¡SAURÓPODO!', '#7fbf3f', L.sign);
+      this.legs.push(L);
+    }
+  }
+
+  updateLegs(dt, vehicles) {
+    if (!this.legs.length) return;
+    const tr = this.track;
+    for (const L of this.legs) {
+      // respira: un vaivén lento de todo el cuerpo (las patas no se mueven del sitio)
+      L.mesh.scale.y = 1 + Math.sin(this.time * 1.3) * 0.012;
+      // ruge (grave y flojo) cuando un jugador se acerca
+      const near = this.game.humans?.some((v) => { const a = tr.ahead(v.s, L.s); return a > 25 && a < 60; });
+      if (near && !L.roared) this.game.sound.play('roar', 0.5);
+      L.roared = near;
+      for (const c of L.cols) for (const v of vehicles) {
+        if (v.state !== 'ok') continue;
+        if (Math.abs(this.rel(v.s, c.s)) < SAURO_R + 2.2 && Math.abs(v.d - c.d) < SAURO_R + HALF_W && v.y < tr.baseAt(c.s) + 8) {
+          const P = tr.pointAt(v.s);
+          const sg = Math.sign(v.d - c.d) || 1;
+          if (v.hit({ dirX: P.rx * sg - P.tx * 0.6, dirZ: P.rz * sg - P.tz * 0.6, push: 9, up: 2, speedMul: 0.4, stun: 0.6, kind: 'leg' })) {
+            this.game.fx.dust(v.x, v.y, v.z, 0, 0, undefined, 8, 2);
+          }
+        }
+      }
     }
   }
 
@@ -899,12 +1086,14 @@ function makeBoard(text, color, w = 256) {
 
 // Lo que rueda de lado a lado: mallas compartidas y medidas para los choques
 function makeRoller(kind) {
-  if (kind === 'snowball' || kind === 'boulder') {
+  if (kind === 'crab') return crabRoller();
+  if (kind === 'snowball' || kind === 'boulder' || kind === 'rock') {
     const r = kind === 'snowball' ? 2.0 : 1.9;
     const geo = kind === 'snowball' ? new THREE.IcosahedronGeometry(r, 2) : new THREE.DodecahedronGeometry(r, 1);
     const mat = kind === 'snowball'
       ? new THREE.MeshStandardMaterial({ color: 0xf6f9fc, roughness: 0.85, flatShading: true })
-      : new THREE.MeshStandardMaterial({ map: T.rockTex(), color: 0x6a5a52, roughness: 1, flatShading: true, emissive: 0x3a0a00 });
+      : kind === 'rock' ? new THREE.MeshStandardMaterial({ map: T.rockTex(), color: 0xc08a6a, roughness: 1, flatShading: true })
+        : new THREE.MeshStandardMaterial({ map: T.rockTex(), color: 0x6a5a52, roughness: 1, flatShading: true, emissive: 0x3a0a00 });
     return { r, len: 2 * r, ball: true, mesh: () => new THREE.Mesh(geo, mat) };
   }
   if (kind === 'pipe') {
@@ -1206,5 +1395,245 @@ function trafficAssets() {
     kerbMat: new THREE.MeshStandardMaterial({ color: 0xffc400, roughness: 0.7 }),
     lampA: new THREE.MeshBasicMaterial({ color: 0xffb000 }),
     lampB: new THREE.MeshBasicMaterial({ color: 0x3a2a10 }),
+  };
+}
+
+// ---------- Modelos de Cañón Jurásico y Bahía Pirata ----------
+// Hechos con cajas, esferas y cilindros de pocos lados, con colores por vértice: una sola
+// malla (y una orden de dibujo) por bicho.
+const tsph = (rx, ry, rz, x, y, z, hex, w = 10, h = 7) => tint(new THREE.SphereGeometry(1, w, h).scale(rx, ry, rz).translate(x, y, z), hex);
+// tubo de a a b (cilindro que adelgaza de r0 a r1)
+function ttube(a, b, r0, r1, hex, seg = 7) {
+  const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b);
+  const dir = B.clone().sub(A);
+  const g = new THREE.CylinderGeometry(r1, r0, dir.length(), seg);
+  g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(UP, dir.clone().normalize()));
+  g.translate((A.x + B.x) / 2, (A.y + B.y) / 2, (A.z + B.z) / 2);
+  return tint(g, hex);
+}
+const mergeT = (list) => { const m = mergeGeometries(list); list.forEach((x) => x.dispose()); return m; };
+
+// Patas del saurópodo: d de cada par (delantero y trasero) y radio de cada columna
+const SAURO_LEGS = [-6.5, 5.5];
+const SAURO_R = 1.3;
+
+// Saurópodo de cuello largo de través sobre la pista (x local = -d, z = a lo largo de la pista)
+function sauropodGeo() {
+  const SKIN = 0x7d8f62, DARK = 0x5f7048, BELLY = 0xb8c08a, SPOT = 0x56653f;
+  const p = [];
+  // cuerpo y tripa
+  p.push(tsph(11, 5.2, 5.6, 0.5, 14.5, 0, SKIN, 14, 9));
+  p.push(tsph(9, 2.4, 4.2, 0.5, 11.2, 0, BELLY, 12, 6));
+  // manchas en el lomo
+  for (const [x, z] of [[-5, -1.5], [-1, 2], [3, -2], [6.5, 1.5], [-3, 3.5], [1.5, -4]]) p.push(tsph(1.6, 0.8, 1.4, x, 19.2 - Math.abs(x) * 0.12, z, SPOT, 6, 4));
+  // patas: columnas gruesas con su pie
+  for (const d of SAURO_LEGS) for (const z of [-2.6, 2.6]) {
+    p.push(ttube([-d, 0, z], [-d, 13, z * 0.8], SAURO_R + 0.1, SAURO_R + 0.5, SKIN, 9));
+    p.push(tint(new THREE.CylinderGeometry(SAURO_R + 0.3, SAURO_R + 0.5, 0.9, 9).translate(-d, 0.45, z), DARK));
+    for (const k of [-1, 0, 1]) p.push(tbox(0.5, 0.4, 0.5, -d + k * 0.7, 0.3, z - SAURO_R - 0.3, 0xe8e0c8)); // uñas
+  }
+  // cuello: de los hombros (lado de las patas delanteras) hacia fuera de la pista, bien alto
+  const neck = [[9, 16, 0], [14, 20.5, -0.5], [18, 25, -1.5], [21, 28.5, -2.8]];
+  for (let i = 0; i < neck.length - 1; i++) p.push(ttube(neck[i], neck[i + 1], 3.0 - i * 0.65, 2.4 - i * 0.55, SKIN, 9));
+  // cabeza, mirando hacia los camiones que llegan (z negativo) y un poco hacia la pista
+  p.push(tsph(1.7, 1.3, 2.3, 21.3, 29.2, -4.6, SKIN, 9, 6));
+  p.push(tsph(1.2, 0.8, 1.4, 21.0, 28.7, -6.4, SKIN, 8, 5));
+  p.push(tbox(1.6, 0.18, 1.6, 21.0, 28.2, -6.6, 0x3a2a20)); // boca
+  for (const sx of [-1, 1]) {
+    p.push(tsph(0.42, 0.42, 0.42, 21.3 + sx * 1.35, 29.9, -5.4, 0xffffff, 6, 4));
+    p.push(tsph(0.22, 0.24, 0.22, 21.3 + sx * 1.6, 30.0, -5.6, 0x111111, 5, 4));
+  }
+  // cola: baja hasta el suelo por el otro lado de la pista
+  const tail = [[-9, 14, 0], [-15, 11.5, 0.8], [-21, 7.5, 2], [-27, 3.5, 3.6], [-32, 1.2, 5.5]];
+  for (let i = 0; i < tail.length - 1; i++) p.push(ttube(tail[i], tail[i + 1], 3.4 - i * 0.8, 2.6 - i * 0.7, SKIN, 8));
+  return mergeT(p);
+}
+
+// Tricerátops (y su cría) para las estampidas: mira hacia +z, como los coches del tráfico
+function trikeGeo(k, body) {
+  const FRILL = 0xd8743a, HORN = 0xf2e8cc, DARK = 0x4a5a36;
+  const p = [
+    tsph(1.5, 1.3, 2.7, 0, 2.5, -0.2, body, 10, 7),
+    tbox(0.7, 0.7, 2.6, 0, 2.1, -3.6, body),
+    tbox(0.4, 0.4, 1.4, 0, 1.6, -5.2, body),
+    tsph(1.0, 0.95, 1.2, 0, 2.6, 2.7, body, 8, 6),
+    tbox(3.4, 2.6, 0.35, 0, 3.4, 2.0, FRILL),
+    tbox(3.0, 0.35, 0.4, 0, 4.75, 2.0, 0x8a3a1a),
+    tbox(0.9, 0.8, 0.8, 0, 2.1, 3.9, DARK), // pico
+  ];
+  for (const sx of [-1, 1]) {
+    p.push(ttube([sx * 0.45, 3.2, 3.0], [sx * 0.6, 3.8, 4.9], 0.24, 0.05, HORN, 5)); // cuernos de la frente
+    p.push(tsph(0.18, 0.2, 0.18, sx * 0.85, 3.0, 3.2, 0x111111, 5, 4));
+    for (const z of [-1.4, 1.2]) p.push(tbox(0.7, 1.6, 0.8, sx * 0.95, 0.8, z, DARK));
+  }
+  p.push(ttube([0, 2.4, 3.9], [0, 2.9, 4.6], 0.2, 0.04, HORN, 5)); // cuerno de la nariz
+  const g = mergeT(p);
+  g.scale(k, k, k);
+  return g;
+}
+
+function herdAssets() {
+  const A = trafficAssets();
+  A.herd = true;
+  // (los coches no hacen falta: fuera, que no se queden sin liberar al cambiar de circuito)
+  for (const g of [...A.carGeos, ...Object.values(A.geos)]) g.dispose();
+  A.carGeos = [];
+  A.size = { trike: { len: 7.4, w: 3.0, h: 4.4 }, baby: { len: 4.1, w: 1.8, h: 2.6 } };
+  A.geos = { trike: trikeGeo(1, 0x6f8a52), baby: trikeGeo(0.55, 0x8ca266) };
+  A.carMat.metalness = 0; A.carMat.roughness = 0.85;
+  // camino de tierra pisoteada en vez de calle, postes de madera y nada de barreras levadizas
+  A.streetMat.map.dispose();
+  A.streetMat.map = herdTrailTex();
+  A.metalMat.color.setHex(0x6a4424); A.metalMat.metalness = 0;
+  A.armGeo.dispose(); A.armGeo = new THREE.BoxGeometry(0.01, 0.01, 0.01).translate(0, -1, 0); // (sin brazos)
+  A.kerbMat.color.setHex(0x7a4a24);
+  return A;
+}
+
+// Camino de la estampida: tierra con huellas de tres dedos
+function herdTrailTex() {
+  const W = 1024, H = 128;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  g.fillStyle = '#a86a44'; g.fillRect(0, 0, W, H);
+  const r = (() => { let s = 11; return () => ((s = (s * 16807) % 2147483647) / 2147483647); })();
+  for (let i = 0; i < 1500; i++) { g.fillStyle = r() < 0.5 ? '#94593a' : '#b87a52'; g.fillRect(r() * W, r() * H, 3, 3); }
+  g.fillStyle = 'rgba(60,30,15,0.55)';
+  for (let i = 0; i < 90; i++) {
+    const x = r() * W, y = H * (0.25 + r() * 0.5);
+    for (const a of [-0.5, 0, 0.5]) { g.beginPath(); g.ellipse(x + Math.sin(a) * 7, y - Math.cos(a) * 7, 2.5, 5, a, 0, Math.PI * 2); g.fill(); }
+    g.beginPath(); g.ellipse(x, y + 2, 5, 4, 0, 0, Math.PI * 2); g.fill();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+// Barco pirata fondeado (eslora a lo largo de z; el costado de los cañones mira a x negativo)
+function pirateShipGeo() {
+  const HULL = 0x5e3518, STRIPE = 0xd8a63a, MAST = 0x4a2a12, SAIL = 0xf0e8d4, BLACK = 0x161616;
+  const p = [
+    tbox(11, 6, 30, 0, 2, 0, HULL),
+    tbox(8, 5.4, 6, 0, 2.3, 17.5, HULL),
+    tbox(4.5, 4.6, 3.5, 0, 2.7, 21.6, HULL),
+    tbox(11.2, 0.9, 30.2, 0, 3.6, 0, STRIPE),
+    tbox(11, 5, 8, 0, 7, -12, HULL), // castillo de popa
+    tbox(11.2, 0.6, 8.2, 0, 9.6, -12, STRIPE),
+    tbox(0.6, 0.6, 9, 0, 6, 24, MAST), // bauprés
+  ];
+  for (const z of [-9, -4.5, 0, 4.5, 9]) {
+    p.push(tbox(0.3, 1.3, 1.6, -5.6, 3.2, z, BLACK));
+    p.push(tint(new THREE.CylinderGeometry(0.35, 0.4, 1.6, 6).rotateZ(Math.PI / 2).translate(-6.1, 3.2, z), 0x2a2a2a));
+  }
+  for (const [z, h] of [[-6, 22], [3, 27], [12, 20]]) {
+    p.push(tint(new THREE.CylinderGeometry(0.45, 0.6, h, 6).translate(0, 5 + h / 2, z), MAST));
+    p.push(tbox(12, h * 0.28, 0.3, 0, 9 + h * 0.3, z + 0.4, SAIL));
+    p.push(tbox(9, h * 0.22, 0.3, 0, 9 + h * 0.62, z + 0.4, SAIL));
+  }
+  // bandera negra con calavera (blanca)
+  p.push(tbox(0.15, 2.4, 3.6, 0, 31.5, 4.8, BLACK));
+  p.push(tbox(0.2, 1.0, 1.0, 0, 31.7, 4.6, 0xffffff));
+  return mergeT(p);
+}
+
+// Huevo gigante para chafar (mismo formato que los coches)
+const EGG_COLS = [0xf3ead2, 0xdfe8c4, 0xecd2b4, 0xd2e2ec];
+function makeEgg(i) {
+  const group = new THREE.Group();
+  const paint = new THREE.MeshStandardMaterial({ color: EGG_COLS[i % EGG_COLS.length], roughness: 0.6 });
+  const egg = new THREE.Mesh(new THREE.SphereGeometry(1.15, 12, 9).scale(1, 1.35, 1).translate(0, 1.55, 0), paint);
+  egg.castShadow = true;
+  group.add(egg);
+  const spots = [];
+  for (let k = 0; k < 5; k++) {
+    const a = k * 1.3 + i, y = 0.9 + (k % 3) * 0.6;
+    const rr = 1.15 * Math.sqrt(Math.max(0.1, 1 - ((y - 1.55) / 1.55) ** 2));
+    spots.push(new THREE.SphereGeometry(0.22, 6, 4).scale(0.4, 1, 1).rotateY(-a).translate(Math.cos(a) * rr, y, Math.sin(a) * rr));
+  }
+  const sp = mergeGeometries(spots);
+  spots.forEach((x) => x.dispose());
+  group.add(new THREE.Mesh(sp, eggSpotMat()));
+  // nido de ramitas
+  group.add(new THREE.Mesh(nestGeo(), nestMat()));
+  return { group, paint, baseColor: paint.color.clone() };
+}
+let eggSpot = null, nestG = null, nestM = null;
+const eggSpotMat = () => eggSpot || (eggSpot = new THREE.MeshStandardMaterial({ color: 0x8a6a4a, roughness: 0.8 }));
+const nestGeo = () => nestG || (nestG = new THREE.TorusGeometry(1.05, 0.35, 5, 10).rotateX(Math.PI / 2).translate(0, 0.25, 0));
+const nestMat = () => nestM || (nestM = new THREE.MeshStandardMaterial({ color: 0x8a6a3a, roughness: 1 }));
+
+// Castillo de arena para chafar
+function makeSandcastle(i) {
+  const group = new THREE.Group();
+  const paint = new THREE.MeshStandardMaterial({ color: 0xe2c286, roughness: 1, flatShading: true });
+  const parts = [new THREE.CylinderGeometry(1.9, 2.1, 1.1, 10).translate(0, 0.55, 0), new THREE.CylinderGeometry(0.85, 1.0, 2.3, 8).translate(0, 2.1, 0), new THREE.ConeGeometry(0.95, 1.1, 8).translate(0, 3.8, 0)];
+  for (let k = 0; k < 4; k++) {
+    const a = k * Math.PI / 2 + 0.6;
+    parts.push(new THREE.CylinderGeometry(0.5, 0.6, 1.6, 7).translate(Math.cos(a) * 1.5, 1.6, Math.sin(a) * 1.5));
+    parts.push(new THREE.ConeGeometry(0.55, 0.6, 7).translate(Math.cos(a) * 1.5, 2.7, Math.sin(a) * 1.5));
+  }
+  const body = new THREE.Mesh(mergeGeometries(parts), paint);
+  parts.forEach((x) => x.dispose());
+  body.castShadow = true;
+  group.add(body);
+  const flag = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.5, 0.8).translate(0, 4.6, 0.4), new THREE.MeshBasicMaterial({ color: [0xe63946, 0x2a9df4, 0xffd60a][i % 3] }));
+  group.add(flag);
+  return { group, paint, baseColor: paint.color.clone() };
+}
+
+// Tiburón para el agua bajo el muelle (mismas piezas que el cocodrilo: cabeza, mandíbula y cola)
+function makeShark() {
+  const group = new THREE.Group();
+  const skin = new THREE.MeshStandardMaterial({ color: 0x6d7f92, roughness: 0.5 });
+  const belly = new THREE.MeshStandardMaterial({ color: 0xe8eef2, roughness: 0.6 });
+  group.add(new THREE.Mesh(new THREE.SphereGeometry(1, 10, 7).scale(0.75, 0.55, 2.0).translate(0, -0.25, 0), skin));
+  const fin = new THREE.Mesh(new THREE.ConeGeometry(0.55, 1.3, 4).scale(0.3, 1, 1).translate(0, 0.75, -0.2), skin);
+  fin.rotation.x = -0.35;
+  group.add(fin);
+  const headPivot = new THREE.Group();
+  headPivot.position.set(0, -0.1, 1.6);
+  group.add(headPivot);
+  headPivot.add(new THREE.Mesh(new THREE.SphereGeometry(1, 8, 6).scale(0.6, 0.4, 0.8).translate(0, 0, 0.4), skin));
+  const teeth = [];
+  for (let k = 0; k < 4; k++) for (const sx of [-1, 1]) teeth.push(new THREE.ConeGeometry(0.06, 0.18, 4).rotateX(Math.PI).translate(sx * 0.3, -0.15, 0.3 + k * 0.18));
+  headPivot.add(new THREE.Mesh(mergeGeometries(teeth), new THREE.MeshStandardMaterial({ color: 0xffffff })));
+  for (const sx of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.09, 6, 5), new THREE.MeshBasicMaterial({ color: 0x111111 }));
+    eye.position.set(sx * 0.42, 0.1, 0.5);
+    headPivot.add(eye);
+  }
+  const jawPivot = new THREE.Group();
+  jawPivot.position.set(0, -0.35, 1.5);
+  group.add(jawPivot);
+  jawPivot.add(new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.15, 0.9).translate(0, -0.05, 0.45), belly));
+  const tail = new THREE.Group();
+  tail.position.set(0, -0.2, -1.9);
+  group.add(tail);
+  tail.add(new THREE.Mesh(new THREE.ConeGeometry(0.35, 1.2, 5).rotateX(-Math.PI / 2).translate(0, 0, -0.5), skin));
+  tail.add(new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.6, 0.6).translate(0, 0.2, -1.1), skin));
+  group.scale.setScalar(1.5);
+  return { group, headPivot, jawPivot, tail };
+}
+
+// Cangrejo gigante que cruza de lado (camina a lo largo de x); el suelo queda en y = -r
+function crabRoller() {
+  const r = 1.4;
+  const SHELL = 0xe0502a, DARK = 0xb03a1c;
+  const p = [tsph(2.0, 0.85, 1.4, 0, 0.4, 0, SHELL, 10, 6)];
+  for (const sx of [-1, 1]) {
+    for (const z of [-0.8, 0, 0.8]) p.push(ttube([sx * 1.6, 0.2, z], [sx * 2.7, -r, z * 1.3], 0.22, 0.12, DARK, 5));
+    // pinzas delante (hacia quien llega: z negativo)
+    p.push(ttube([sx * 1.0, 0.4, -1.1], [sx * 1.4, 1.1, -2.2], 0.25, 0.25, DARK, 5));
+    p.push(tsph(0.55, 0.45, 0.7, sx * 1.4, 1.3, -2.6, SHELL, 7, 5));
+    p.push(ttube([sx * 0.45, 0.9, -1.1], [sx * 0.55, 1.8, -1.2], 0.08, 0.08, DARK, 4));
+    p.push(tsph(0.25, 0.25, 0.25, sx * 0.55, 1.95, -1.2, 0xffffff, 6, 4));
+    p.push(tsph(0.12, 0.12, 0.12, sx * 0.55, 2.0, -1.42, 0x111111, 5, 3));
+  }
+  const geo = mergeT(p);
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6 });
+  return {
+    r, len: 3.4, ball: true, mesh: () => new THREE.Mesh(geo, mat),
+    walk: (m, t) => { m.rotation.z = Math.sin(t * 16) * 0.07; m.position.y = r + Math.abs(Math.sin(t * 16)) * 0.18; },
   };
 }

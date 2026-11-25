@@ -145,11 +145,12 @@ export function buildTrackMeshes(track, scene) {
     floor.receiveShadow = true;
     group.add(floor);
     if (p.water) {
-      const lava = p.liquid === 'lava', ice = p.liquid === 'ice';
+      const lava = p.liquid === 'lava', ice = p.liquid === 'ice', tar = p.liquid === 'tar';
       const wt = T.waterTex();
       const mat = lava
         ? new THREE.MeshStandardMaterial({ map: wt, color: 0xff8a30, emissive: 0xff4a00, emissiveMap: wt, emissiveIntensity: 1.4, roughness: 0.6 })
-        : new THREE.MeshStandardMaterial({ map: wt, color: ice ? 0xcfe8f6 : 0x5fa08a, roughness: ice ? 0.3 : 0.15, metalness: 0.1, transparent: true, opacity: ice ? 0.93 : 0.88 });
+        : tar ? new THREE.MeshStandardMaterial({ map: wt, color: 0x2a221c, roughness: 0.08, metalness: 0.3 }) // alquitrán: negro y brillante
+          : new THREE.MeshStandardMaterial({ map: wt, color: ice ? 0xcfe8f6 : 0x5fa08a, roughness: ice ? 0.3 : 0.15, metalness: 0.1, transparent: true, opacity: ice ? 0.93 : 0.88 });
       const water = new THREE.Mesh(
         strip(track, rows, () => [[-LIMIT, p.floor], [LIMIT, p.floor]], (s, k, d) => [d / 10, s / 10]),
         mat,
@@ -185,7 +186,7 @@ export function buildTrackMeshes(track, scene) {
     // carteles de aviso en los laterales
     for (const side of [-1, 1]) {
       const txt = pitText(track.theme, p.liquid);
-      const sign = makeSign(txt, p.liquid === 'lava' ? '#d4380d' : p.liquid === 'ice' ? '#2a6fdb' : p.water ? '#1f8a3a' : '#e0a100');
+      const sign = makeSign(txt, p.liquid === 'lava' ? '#d4380d' : p.liquid === 'ice' ? '#2a6fdb' : p.liquid === 'tar' ? '#8a6a4a' : p.water ? '#1f8a3a' : '#e0a100');
       placeOnTrack(sign, track, p.s0 - 30, side * (LIMIT + 3), track.baseAt(p.s0 - 30));
       sign.rotation.y += Math.PI; // la cara con el texto, hacia quien llega
       group.add(sign);
@@ -276,110 +277,115 @@ export function buildTrackMeshes(track, scene) {
   }
 
   // ---------- Túnel ----------
-  const tun = track.tunnel;
-  const tRows = rowsBetween(track, tun.s0, tun.s1);
-  const R = LIMIT + 0.8, wallH = 7;
-  const arch = [];
-  arch.push([-R, 0]);
-  for (let a = 0; a <= 16; a++) {
-    const ang = Math.PI - (a / 16) * Math.PI;
-    arch.push([Math.cos(ang) * R, wallH + Math.sin(ang) * R * 0.85]);
-  }
-  arch.push([R, 0]);
-  const rockMat = new THREE.MeshStandardMaterial({ map: T.rockTex(), roughness: 1, side: THREE.DoubleSide, color: track.theme.tunnel.inner });
-  const inner = new THREE.Mesh(strip(track, tRows, (s) => arch.map(([d, y]) => [d, y + track.baseAt(s)]), (s, k) => [k / 4, s / 10]), rockMat);
-  inner.receiveShadow = true;
-  group.add(inner);
+  // (en Cañón Jurásico es el esqueleto de un dinosaurio gigante: costillas abiertas por arriba)
+  let lampMesh = null;
+  if (track.theme.tunnel.ribs) group.add(ribTunnel(track));
+  else {
+    const tun = track.tunnel;
+    const tRows = rowsBetween(track, tun.s0, tun.s1);
+    const R = LIMIT + 0.8, wallH = 7;
+    const arch = [];
+    arch.push([-R, 0]);
+    for (let a = 0; a <= 16; a++) {
+      const ang = Math.PI - (a / 16) * Math.PI;
+      arch.push([Math.cos(ang) * R, wallH + Math.sin(ang) * R * 0.85]);
+    }
+    arch.push([R, 0]);
+    const rockMat = new THREE.MeshStandardMaterial({ map: T.rockTex(), roughness: 1, side: THREE.DoubleSide, color: track.theme.tunnel.inner });
+    const inner = new THREE.Mesh(strip(track, tRows, (s) => arch.map(([d, y]) => [d, y + track.baseAt(s)]), (s, k) => [k / 4, s / 10]), rockMat);
+    inner.receiveShadow = true;
+    group.add(inner);
 
-  // montaña exterior
-  const W = 75, H = 34;
-  const hash = (i, k) => {
-    const x = Math.sin(i * 12.9898 + k * 78.233) * 43758.5453;
-    return x - Math.floor(x);
-  };
-  const outerProfile = (s) => {
-    const i = Math.round(s / track.ds);
-    const pts = [];
-    for (let k = 0; k <= 20; k++) {
-      const d = -W + (k / 20) * 2 * W;
-      const t = Math.abs(d) / W;
-      let y = H * (1 - Math.pow(t, 1.6));
-      y += (hash(Math.floor(i / 6), k) - 0.5) * 6 * (1 - t);
-      if (k === 0 || k === 20) y = -0.5;
-      pts.push([d, Math.max(-0.5, y)]);
+    // montaña exterior
+    const W = 75, H = 34;
+    const hash = (i, k) => {
+      const x = Math.sin(i * 12.9898 + k * 78.233) * 43758.5453;
+      return x - Math.floor(x);
+    };
+    const outerProfile = (s) => {
+      const i = Math.round(s / track.ds);
+      const pts = [];
+      for (let k = 0; k <= 20; k++) {
+        const d = -W + (k / 20) * 2 * W;
+        const t = Math.abs(d) / W;
+        let y = H * (1 - Math.pow(t, 1.6));
+        y += (hash(Math.floor(i / 6), k) - 0.5) * 6 * (1 - t);
+        if (k === 0 || k === 20) y = -0.5;
+        pts.push([d, Math.max(-0.5, y)]);
+      }
+      return pts;
+    };
+    const mRows = tRows.filter((_, i) => i % 6 === 0 || i === tRows.length - 1);
+    const mountainMat = new THREE.MeshStandardMaterial({ map: T.rockTex(), color: track.theme.tunnel.outer, roughness: 1, flatShading: true, side: THREE.DoubleSide });
+    const mountain = new THREE.Mesh(strip(track, mRows, outerProfile, (s, k) => [k / 3, s / 20]), mountainMat);
+    mountain.castShadow = true; mountain.receiveShadow = true;
+    group.add(mountain);
+    // caras de las bocas del túnel
+    for (const s of [mRows[0], mRows[mRows.length - 1]]) {
+      const prof = outerProfile(s);
+      const shape = new THREE.Shape();
+      shape.moveTo(prof[0][0], prof[0][1]);
+      for (const [d, y] of prof.slice(1)) shape.lineTo(d, y);
+      shape.lineTo(prof[0][0], prof[0][1]);
+      const hole = new THREE.Path();
+      hole.moveTo(arch[0][0], arch[0][1] - 0.3);
+      for (const [d, y] of arch.slice(1)) hole.lineTo(d, y === 0 ? -0.3 : y);
+      hole.lineTo(arch[0][0], arch[0][1] - 0.3);
+      shape.holes.push(hole);
+      const sg = new THREE.ShapeGeometry(shape);
+      const P = track.pointAt(s);
+      const face = new THREE.Mesh(sg, mountainMat);
+      // ShapeGeometry: x = d (derecha), y = altura. Orientamos x local a lo largo del vector derecha.
+      face.position.set(P.x, track.baseAt(s), P.z);
+      face.rotation.y = Math.atan2(-P.rz, P.rx);
+      group.add(face);
+      // marco de piedra del portal
+      const frameGeos = [];
+      for (let a = 0; a <= 12; a++) {
+        const ang = Math.PI - (a / 12) * Math.PI;
+        const g = new THREE.BoxGeometry(2.2, 2.2, 1.6);
+        g.rotateZ(ang - Math.PI / 2);
+        g.translate(Math.cos(ang) * (R + 0.6), wallH + Math.sin(ang) * (R * 0.85 + 0.6), 0);
+        frameGeos.push(g);
+      }
+      for (const sd of [-1, 1]) {
+        const g = new THREE.BoxGeometry(2.2, wallH, 1.6);
+        g.translate(sd * (R + 0.6), wallH / 2, 0);
+        frameGeos.push(g);
+      }
+      const frame = new THREE.Mesh(mergeGeometries(frameGeos), new THREE.MeshStandardMaterial({ color: 0x8d8478, roughness: 0.9, flatShading: true }));
+      frame.position.copy(face.position);
+      frame.rotation.y = face.rotation.y;
+      frame.castShadow = true;
+      group.add(frame);
     }
-    return pts;
-  };
-  const mRows = tRows.filter((_, i) => i % 6 === 0 || i === tRows.length - 1);
-  const mountainMat = new THREE.MeshStandardMaterial({ map: T.rockTex(), color: track.theme.tunnel.outer, roughness: 1, flatShading: true, side: THREE.DoubleSide });
-  const mountain = new THREE.Mesh(strip(track, mRows, outerProfile, (s, k) => [k / 3, s / 20]), mountainMat);
-  mountain.castShadow = true; mountain.receiveShadow = true;
-  group.add(mountain);
-  // caras de las bocas del túnel
-  for (const s of [mRows[0], mRows[mRows.length - 1]]) {
-    const prof = outerProfile(s);
-    const shape = new THREE.Shape();
-    shape.moveTo(prof[0][0], prof[0][1]);
-    for (const [d, y] of prof.slice(1)) shape.lineTo(d, y);
-    shape.lineTo(prof[0][0], prof[0][1]);
-    const hole = new THREE.Path();
-    hole.moveTo(arch[0][0], arch[0][1] - 0.3);
-    for (const [d, y] of arch.slice(1)) hole.lineTo(d, y === 0 ? -0.3 : y);
-    hole.lineTo(arch[0][0], arch[0][1] - 0.3);
-    shape.holes.push(hole);
-    const sg = new THREE.ShapeGeometry(shape);
-    const P = track.pointAt(s);
-    const face = new THREE.Mesh(sg, mountainMat);
-    // ShapeGeometry: x = d (derecha), y = altura. Orientamos x local a lo largo del vector derecha.
-    face.position.set(P.x, track.baseAt(s), P.z);
-    face.rotation.y = Math.atan2(-P.rz, P.rx);
-    group.add(face);
-    // marco de piedra del portal
-    const frameGeos = [];
-    for (let a = 0; a <= 12; a++) {
-      const ang = Math.PI - (a / 12) * Math.PI;
-      const g = new THREE.BoxGeometry(2.2, 2.2, 1.6);
-      g.rotateZ(ang - Math.PI / 2);
-      g.translate(Math.cos(ang) * (R + 0.6), wallH + Math.sin(ang) * (R * 0.85 + 0.6), 0);
-      frameGeos.push(g);
+    // lámparas del techo
+    const lamps = [];
+    for (let s = tun.s0 + 6; s < tun.s1; s += 12) {
+      for (const d of [-6, 6]) {
+        const P = track.pointAt(s, d);
+        const g = new THREE.BoxGeometry(0.6, 0.3, 3);
+        g.rotateY(Math.PI / 2 - P.th);
+        const yy = wallH + Math.sqrt(Math.max(0, R * R - d * d)) * 0.85 - 0.4;
+        g.translate(P.x, track.baseAt(s) + yy, P.z);
+        lamps.push(g);
+      }
     }
-    for (const sd of [-1, 1]) {
-      const g = new THREE.BoxGeometry(2.2, wallH, 1.6);
-      g.translate(sd * (R + 0.6), wallH / 2, 0);
-      frameGeos.push(g);
+    lampMesh = new THREE.Mesh(mergeGeometries(lamps), new THREE.MeshBasicMaterial({ color: 0xffe9a8 }));
+    group.add(lampMesh);
+    // ojos de gato a ras de suelo
+    const eyes = [];
+    for (let s = tun.s0 + 3; s < tun.s1; s += 6) {
+      for (const d of [-LIMIT + 0.05, LIMIT - 0.05]) {
+        const P = track.pointAt(s, d);
+        const g = new THREE.BoxGeometry(0.2, 0.25, 0.8);
+        g.rotateY(Math.PI / 2 - P.th);
+        g.translate(P.x, track.baseAt(s) + 0.9, P.z);
+        eyes.push(g);
+      }
     }
-    const frame = new THREE.Mesh(mergeGeometries(frameGeos), new THREE.MeshStandardMaterial({ color: 0x8d8478, roughness: 0.9, flatShading: true }));
-    frame.position.copy(face.position);
-    frame.rotation.y = face.rotation.y;
-    frame.castShadow = true;
-    group.add(frame);
+    group.add(new THREE.Mesh(mergeGeometries(eyes), new THREE.MeshBasicMaterial({ color: 0x66e0ff })));
   }
-  // lámparas del techo
-  const lamps = [];
-  for (let s = tun.s0 + 6; s < tun.s1; s += 12) {
-    for (const d of [-6, 6]) {
-      const P = track.pointAt(s, d);
-      const g = new THREE.BoxGeometry(0.6, 0.3, 3);
-      g.rotateY(Math.PI / 2 - P.th);
-      const yy = wallH + Math.sqrt(Math.max(0, R * R - d * d)) * 0.85 - 0.4;
-      g.translate(P.x, track.baseAt(s) + yy, P.z);
-      lamps.push(g);
-    }
-  }
-  const lampMesh = new THREE.Mesh(mergeGeometries(lamps), new THREE.MeshBasicMaterial({ color: 0xffe9a8 }));
-  group.add(lampMesh);
-  // ojos de gato a ras de suelo
-  const eyes = [];
-  for (let s = tun.s0 + 3; s < tun.s1; s += 6) {
-    for (const d of [-LIMIT + 0.05, LIMIT - 0.05]) {
-      const P = track.pointAt(s, d);
-      const g = new THREE.BoxGeometry(0.2, 0.25, 0.8);
-      g.rotateY(Math.PI / 2 - P.th);
-      g.translate(P.x, track.baseAt(s) + 0.9, P.z);
-      eyes.push(g);
-    }
-  }
-  group.add(new THREE.Mesh(mergeGeometries(eyes), new THREE.MeshBasicMaterial({ color: 0x66e0ff })));
 
   // ---------- Línea de meta y pórtico de salida ----------
   {
@@ -466,4 +472,68 @@ function makeSign(text, color) {
     g.add(p);
   }
   return g;
+}
+
+// Túnel de costillas (Cañón Jurásico): pares de costillas curvas de lado a lado, la columna
+// por arriba y un cráneo enorme sobre la entrada. Se ve el cielo entre las costillas.
+// Todo en una malla con colores por vértice.
+function ribTunnel(track) {
+  const tun = track.tunnel;
+  const geos = [];
+  const R = LIMIT + 1.6, H = 18;
+  const col = (g, hex) => {
+    const c = new THREE.Color(hex);
+    const n = g.attributes.position.count, a = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { a[i * 3] = c.r; a[i * 3 + 1] = c.g; a[i * 3 + 2] = c.b; }
+    g.setAttribute('color', new THREE.BufferAttribute(a, 3));
+    g.deleteAttribute('uv');
+    return g;
+  };
+  // marco de la pista en s: x = d (derecha), y = arriba, z = hacia atrás
+  const frame = (s) => {
+    const P = track.pointAt(s);
+    return new THREE.Matrix4().makeBasis(new THREE.Vector3(P.rx, 0, P.rz), new THREE.Vector3(0, 1, 0), new THREE.Vector3(-P.tx, 0, -P.tz)).setPosition(P.x, track.baseAt(s), P.z);
+  };
+  const BONE = track.theme.tunnel.inner, OLD = 0xcfc0a0;
+  const len = tun.s1 - tun.s0;
+  const n = Math.max(2, Math.round(len / 8));
+  let prevTop = null;
+  for (let i = 0; i <= n; i++) {
+    const s = tun.s0 + (i / n) * len;
+    const k = 1 - 0.3 * Math.abs(i / n - 0.35); // más altas hacia el pecho
+    const rib = new THREE.TorusGeometry(R, i % 2 ? 0.55 : 0.7, 5, 14, Math.PI);
+    rib.scale(1, (H * k) / R, 1);
+    const M = frame(s);
+    geos.push(col(rib.applyMatrix4(M), i % 3 ? BONE : OLD));
+    // vértebra encima de cada costilla y columna entre vértebras
+    const top = new THREE.Vector3(0, H * k + 0.6, 0).applyMatrix4(M);
+    geos.push(col(new THREE.BoxGeometry(2.6, 1.8, 2.2).applyMatrix4(M).translate(0, H * k + 0.8, 0), BONE));
+    if (prevTop) {
+      const dir = top.clone().sub(prevTop);
+      const c = new THREE.CylinderGeometry(0.7, 0.7, dir.length(), 6);
+      c.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize()));
+      c.translate((top.x + prevTop.x) / 2, (top.y + prevTop.y) / 2, (top.z + prevTop.z) / 2);
+      geos.push(col(c, OLD));
+    }
+    prevTop = top;
+    // pies de cada costilla, hundidos en la arena
+    for (const sd of [-1, 1]) geos.push(col(new THREE.CylinderGeometry(1.0, 1.4, 1.2, 6).translate(sd * R, 0.4, 0).applyMatrix4(M), OLD));
+  }
+  // cráneo sobre la entrada, mirando a los camiones que llegan (con las cuencas oscuras)
+  const M0 = frame(tun.s0 - 4);
+  const sk = [
+    [new THREE.BoxGeometry(12, 7, 11), 0, H + 3.5, 0, BONE],
+    [new THREE.BoxGeometry(9, 4.5, 9), 0, H + 1.5, 9, BONE], // hocico
+    [new THREE.BoxGeometry(8.5, 1.6, 9), 0, H - 2.4, 7, OLD], // mandíbula
+    [new THREE.BoxGeometry(2.6, 2.6, 0.6), -3.2, H + 4.6, 5.6, 0x2a1a10],
+    [new THREE.BoxGeometry(2.6, 2.6, 0.6), 3.2, H + 4.6, 5.6, 0x2a1a10],
+    [new THREE.BoxGeometry(1.2, 1.2, 0.5), -1.6, H + 2.4, 13.6, 0x2a1a10],
+    [new THREE.BoxGeometry(1.2, 1.2, 0.5), 1.6, H + 2.4, 13.6, 0x2a1a10],
+  ];
+  for (let t = 0; t < 7; t++) for (const y of [H - 0.6, H - 1.4]) sk.push([new THREE.ConeGeometry(0.35, 1.3, 4).rotateX(y < H - 1 ? 0 : Math.PI), -3.6 + t * 1.2, y, 12.5, 0xfffbf0]);
+  for (const [g, x, y, z, c] of sk) geos.push(col(g.translate(x, y, z).applyMatrix4(M0), c));
+  const m = new THREE.Mesh(mergeGeometries(geos), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75, flatShading: true }));
+  geos.forEach((g) => g.dispose());
+  m.castShadow = true; m.receiveShadow = true;
+  return m;
 }

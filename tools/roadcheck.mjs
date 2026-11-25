@@ -29,6 +29,9 @@ const r = await page.evaluate((frames, circuit, players) => {
   let ground = null;
   g.scene.traverse((o) => { if (o.isMesh && o.geometry.parameters && o.geometry.parameters.width === 5000) ground = o; });
   if (!ground) throw new Error('no encuentro el suelo');
+  // también el mar y la arena de Bahía Pirata: planos que se dibujan como el suelo (renderOrder entre -1 y 0)
+  const flats = [ground];
+  g.scene.traverse((o) => { if (o.isMesh && o !== ground && o.renderOrder < 0 && o.renderOrder > -1) flats.push(o); });
   const FX = [0.3, 0.4, 0.6, 0.7];
   // lee los puntos de muestra (abajo, en el centro de cada vista) del último dibujo
   const sample = () => {
@@ -47,9 +50,9 @@ const r = await page.evaluate((frames, circuit, players) => {
     g.frame(0.05);
     if (f < 12) continue; // la cámara aún gira alrededor del camión tras la salida
     const withGround = sample();
-    ground.visible = false;
+    for (const o of flats) o.visible = false;
     g.render(0); // mismo fotograma, sin el suelo
-    ground.visible = true;
+    for (const o of flats) o.visible = true;
     const without = sample();
     g.views.forEach((v, vi) => {
       const pl = v.player;

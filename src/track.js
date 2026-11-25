@@ -61,6 +61,18 @@ const smooth = (a, b, x) => {
   return t * t * (3 - 2 * t);
 };
 
+// Olas: periodo (s), largo de cada lengua (m), retraso entre lenguas (fracción del periodo),
+// lo que entra en la pista desde la barrera (m: con 14 llega hasta d = ∓1 y deja seco el otro
+// lado) y dónde espera el agua cuando se retira (m fuera de la barrera)
+export const WAVE = { period: 6.5, lobe: 26, lag: 0.07, reach: 14, out: 26 };
+// fase de la ola: fuera (0) hasta 0,3; entra hasta 0,48; se queda hasta 0,75; se retira hasta 0,95
+export function waveEnv(u) {
+  if (u < 0.3) return 0;
+  if (u < 0.48) return smooth(0.3, 0.48, u);
+  if (u < 0.75) return 1;
+  return 1 - smooth(0.75, 0.95, u);
+}
+
 export class Track {
   constructor(circuit) {
     this.circuit = circuit;
@@ -115,7 +127,8 @@ export class Track {
   buildFeatures() {
     const f = this.circuit.features((k, rel) => this.at(k, rel), LIMIT);
     // listas vacías por defecto: cada circuito pone solo lo que usa
-    Object.assign(this, { plateaus: [], whoops: [], ramps: [], pits: [], mud: [], lakes: [], reserved: [], meteors: [], crossings: [] }, f);
+    Object.assign(this, { plateaus: [], whoops: [], ramps: [], pits: [], mud: [], lakes: [], reserved: [], meteors: [], crossings: [], waves: [], legs: [] }, f);
+    this.time = 0; // reloj de las olas (lo avanza Obstacles.update)
     // centro de cada cruce (los coches pasan por ahí) y hueco de la barrera, ajustado a las muestras
     for (const c of this.crossings) {
       c.s = (c.s0 + c.s1) / 2;
@@ -171,6 +184,10 @@ export class Track {
     for (const k of this.lakes) {
       if (s >= k.s0 && s < k.s1 && Math.abs(d) <= LIMIT) return { h, type: 'ice' };
     }
+    // olas (Bahía Pirata): donde ha entrado el agua, frena como el barro
+    for (const w of this.waves) {
+      if (s >= w.s0 && s < w.s1 && (w.side < 0 ? d + LIMIT : LIMIT - d) < this.waveAt(w, s, this.time)) return { h, type: 'mud', wave: w };
+    }
     if (type === 'road') {
       for (const m of this.mud) {
         let ds = s - m.s;
@@ -180,6 +197,18 @@ export class Track {
       }
     }
     return { h, type };
+  }
+
+  // Olas: cuántos metros ha entrado el agua desde la barrera del lado del mar en (s, t).
+  // Negativo: el agua está todavía en la arena, fuera de la pista. La zona se parte en lenguas
+  // de WAVE.lobe metros que llegan un poco desfasadas, como una ola que rompe en diagonal.
+  waveAt(w, s, t) {
+    const x = (s - w.s0) / WAVE.lobe;
+    const k = Math.floor(x), fx = x - k;
+    const u = (((t / WAVE.period - k * WAVE.lag) % 1) + 1) % 1;
+    const env = waveEnv(u);
+    const shape = Math.sqrt(Math.max(0, Math.sin(Math.PI * fx)));
+    return -WAVE.out + (WAVE.reach + WAVE.out) * env * shape;
   }
 
   inTunnel(s) {

@@ -3,6 +3,8 @@ import { ROAD_HALF, LIMIT } from './track.js';
 import { RAIN_HIT_R } from './obstacles.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
+// huecos entre las patas del saurópodo (patas en d = -6,5 y +5,5; ver obstacles.js)
+const LEG_GAPS = [-0.5, 9.6];
 const wrapAng = (a) => {
   while (a > Math.PI) a -= 2 * Math.PI;
   while (a < -Math.PI) a += 2 * Math.PI;
@@ -61,6 +63,9 @@ export class AIDriver {
         return this.pitPick.lane;
       }
     }
+    // olas y patas del saurópodo (Bahía Pirata y Cañón Jurásico)
+    const sp = this.specialLane(s);
+    if (sp !== null) return sp;
     // charcos de barro: esquivarlos si se puede
     for (const m of tr.mud) {
       const ds = tr.ahead(s, m.s);
@@ -166,6 +171,32 @@ export class AIDriver {
       this.itemDelay = rand(0.8, 3);
     }
     return { steer, throttle, brake, item: useItem };
+  }
+
+  // Olas: por el lado seco (si decide intentarlo en esta pasada). Saurópodo: por el hueco entre
+  // las patas más cercano a su carril (casi siempre; a veces se despista y se la pega).
+  specialLane(s) {
+    const tr = this.track;
+    if (!tr.waves.length && !tr.legs.length) return null;
+    for (const w of tr.waves) {
+      if (tr.ahead(w.s0 - 25, s) < w.s1 - w.s0 + 25) {
+        if (this.waveTry == null) this.waveTry = Math.random() < 0.25 + 0.3 * this.skill;
+        if (!this.waveTry) return null;
+        return w.side < 0 ? Math.max(3.5, Math.min(8, this.laneTarget)) : Math.min(-3.5, Math.max(-8, this.laneTarget));
+      }
+    }
+    this.waveTry = null;
+    for (const L of tr.legs) {
+      if (tr.ahead(s, L.s) < 30 || tr.ahead(L.s, s) < 6) {
+        if (this.legTry == null) this.legTry = Math.random() < 0.45 + 0.3 * this.skill;
+        if (!this.legTry) return null;
+        let best = LEG_GAPS[0];
+        for (const g of LEG_GAPS) if (Math.abs(g - this.lane) < Math.abs(best - this.lane)) best = g;
+        return best;
+      }
+    }
+    this.legTry = null;
+    return null;
   }
 
   // Zona de rodillos (troncos, bolas...) o de tráfico: carril por el que cruzarla sin que le
