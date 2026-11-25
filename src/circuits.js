@@ -1,12 +1,30 @@
 // Circuitos: trazado, zonas especiales, sitio de cada obstáculo y aspecto (tema).
 //
-// Todos comparten el mismo esquema de 12 tramos, así los obstáculos van en sitios
-// equivalentes: 0 recta de meta (coches para aplastar), 2 troncos y gran foso,
-// 5 chicane con bolas de demolición, 7 túnel, 9 manchas, baches y foso con puente,
-// 11 la red. Las rectas 9 y 11 se calculan para que el circuito cierre.
+// El trazado es una lista de rectas S(largo) y curvas A(ángulo, radio) (ángulo positivo:
+// a la derecha); las dos rectas marcadas solve: 'X' e 'Y' se calculan para que cierre.
+// Las zonas y los obstáculos se colocan con (tramo, metros desde su inicio).
+// Valle Monstruo usa el esquema de 12 tramos de siempre (standardFeatures y STANDARD_PLACES);
+// los demás tienen trazado y obstáculos propios. `rev` es la revisión del trazado: si cambia,
+// los récords de ese circuito empiezan de cero (ver recordKey en main.js).
+// Comprobar con: node tools/trazado.mjs
 
 const S = (len, extra) => ({ type: 'S', len, ...extra });
 const A = (ang, r) => ({ type: 'A', ang, r });
+
+// Ayudantes para describir zonas: foso con rampa de lado a lado, mancha, fila de cajas…
+const fullRamp = (at, LIMIT, k, rel, len = 16, h = 3.5) => ({ s0: at(k, rel), s1: at(k, rel + len), d0: -LIMIT, d1: LIMIT, h });
+const patch = (at, k, rel, d, rs = 9, rd = 5) => ({ s: at(k, rel), d, rs, rd });
+// fila de coches o muñecos, alternando las dos posiciones de siempre
+const CRUSH_A = [-8, -3, 2, 7], CRUSH_B = [-5.5, -0.5, 4.5, 9];
+const crushRows = (rels) => rels.map((rel, i) => [rel, i % 2 ? CRUSH_B : CRUSH_A]);
+// grupo de barriles apretado (a menos de 5 m entre vecinos: si explota uno, explotan todos)
+// en un lado de la pista, dejando libre el otro
+const barrelGroup = (rel, side, n = 3) => {
+  const o = side < 0 ? [-9, -5.5, -7.3] : [5.5, 9, 7.3];
+  const rows = [[rel, [o[0], o[1]]], [rel + 3, [o[2]]]];
+  if (n > 3) rows.push([rel + 6, [o[0]]]);
+  return rows;
+};
 
 // Zonas especiales comunes (en metros desde el inicio de cada tramo)
 function standardFeatures(at, LIMIT, o = {}) {
@@ -82,11 +100,39 @@ export const CIRCUITS = [
     },
   },
   {
-    id: 'nieve', name: 'Pico Helado', short: 'Nieve',
-    desc: 'Placas de hielo que patinan, bolas de nieve gigantes y agua helada.',
-    layout: [S(240), A(110, 60), S(340), A(70, 80), A(-60, 55), A(100, 55), A(-40, 70), S(280), A(100, 75), S(0, { solve: 'X' }), A(80, 60), S(0, { solve: 'Y' })],
-    features: (at, L) => standardFeatures(at, L, { liquid: 'ice', extraPatches: [[11, 70, -5], [11, 85, 5], [0, 160, 0]] }),
-    places: STANDARD_PLACES,
+    // Rápido y resbaladizo: curvas amplias, rectas largas, lago helado y una grieta que saltar
+    id: 'nieve', name: 'Pico Helado', short: 'Nieve', rev: 2,
+    desc: 'Rápido y resbaladizo: un lago helado con muñecos de nieve, bolas gigantes y un salto sobre una grieta.',
+    //        0       1           2                    3            4       5             6            7            8                    9            10
+    layout: [S(330), A(50, 220), S(0, { solve: 'X' }), A(130, 110), S(450), A(-50, 150), A(50, 150), A(90, 120), S(0, { solve: 'Y' }), A(90, 120), S(150)],
+    features: (at, L) => ({
+      // el lago empieza en plena curva larga y sigue por la recta: hay que entrar ya colocado
+      lakes: [{ s0: at(1, 95), s1: at(2, 40) }],
+      ramps: [fullRamp(at, L, 4, 200, 20, 4.5)],
+      pits: [{ name: 'grieta', s0: at(4, 220), s1: at(4, 246), floor: 1.4, liquid: 'ice' }],
+      whoops: [{ a: at(4, 60), b: at(4, 60) + 6 * 9, amp: 0.75, wl: 9 }],
+      mud: [
+        patch(at, 0, 200, -5), patch(at, 0, 222, 4), patch(at, 0, 244, -2),
+        patch(at, 4, 400, 0), patch(at, 5, 70, 5), patch(at, 6, 45, -5), patch(at, 6, 90, 4),
+      ],
+      tunnel: { s0: at(8, 120), s1: at(8, 220) }, // cueva de hielo corta
+    }),
+    places: {
+      turbos: [[0, 40, -6], [0, 40, 6], [3, 232, -5], [3, 232, 5], [4, 150, 0], [4, 185, 0], [7, 150, 0], [10, 100, -6], [10, 100, 6]],
+      boxes: [[0, 110], [3, 125], [4, 330], [8, 240], [6, 120]],
+      rollers: [
+        { seg: 2, list: [[90, 4.2, 0], [118, 3.6, 0.45]], sign: [2, 60] },
+        { seg: 8, list: [[45, 4.0, 0.1], [72, 4.6, 0.6]], sign: [7, 170] },
+      ],
+      balls: [],
+      nets: [[10, 60]],
+      crush: [
+        { seg: 1, rows: [[115, [-8, -1, 6]], [135, [-5, 2, 9]], [155, [-9, -2, 5]], [175, [-6, 1, 8]]], sign: [1, 45] },
+        { seg: 2, rows: [[8, [-7, 0, 7]], [26, [-4, 3]]] },
+      ],
+      barrels: [{ seg: 8, rows: [...barrelGroup(150, -1), ...barrelGroup(185, 1)] }],
+      patchSigns: [[0, 170], [5, 35]],
+    },
     theme: {
       tex: {
         id: 'nieve',
