@@ -150,7 +150,10 @@ export class AIDriver {
       if (!lanes) continue;
       const before = tr.ahead(s, p.s0);
       const after = tr.ahead(p.s1, s);
-      if (before < 110 || after < 6) {
+      // también encima del foso: antes, al mirar a un punto ya dentro del foso, el carril del
+      // puente se olvidaba y el camión volvía a su carril de siempre (y se salía del puente)
+      const inside = tr.ahead(p.s0, s) < p.s1 - p.s0;
+      if (before < 110 || inside || after < 6) {
         if (this.pitPick?.p !== p) {
           let cands = lanes.filter((l) => l.bridge === this.preferBridge);
           if (!cands.length) cands = lanes;
