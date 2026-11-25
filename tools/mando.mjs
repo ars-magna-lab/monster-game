@@ -73,6 +73,7 @@ r.circuito = await ev((RIGHT) => {
   const g = window.__mm;
   const antes = g.circuit.id;
   window.__axis(1, 1); window.__f(1); window.__axis(1, 0); window.__f(1);
+  window.__tap(13); // la fila «Modo» va antes que la de circuito
   const foco = window.__focus();
   window.__tap(RIGHT);
   return { antes, despues: g.circuit.id, foco };

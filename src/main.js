@@ -18,6 +18,7 @@ import { setAnisotropy, checkerTex, softDotTex, setTexTheme } from './textures.j
 import { CIRCUITS, circuitById, pitText } from './circuits.js';
 import { renderSong } from './music.js';
 import { setCheapMaterials, disposeScene } from './optimize.js';
+import { newCup, addRace, standings, buildPodium } from './copa.js';
 
 const STEP = 1 / 120;
 const DIFF = {
@@ -127,7 +128,7 @@ class Game {
     this.input = new Input();
     this.vehicles = TRUCKS.map((def) => new Vehicle(def, null));
 
-    this.settings = loadJSON('megamonstruos.ajustes', { truck: 0, truck2: 1, laps: 3, diff: 'normal', music: true, mode: 1, split: 'auto', quality: 'auto', circuit: 'clasico' });
+    this.settings = loadJSON('megamonstruos.ajustes', { truck: 0, truck2: 1, laps: 3, diff: 'normal', music: true, mode: 1, split: 'auto', quality: 'auto', circuit: 'clasico', cup: false });
     if (this.settings.truck2 === this.settings.truck) this.settings.truck2 = (this.settings.truck + 1) % TRUCKS.length;
     this.records = loadJSON('megamonstruos.records', {});
     this.sound.musicOn = this.settings.music;
@@ -272,6 +273,13 @@ class Game {
     on('btn-pause', () => this.pause());
     on('btn-fs', () => this.toggleFullscreen());
     on('btn-fs-pause', () => this.toggleFullscreen());
+    on('btn-cup-next', () => this.cupNext());
+    on('btn-cup-quit', () => this.goTitle());
+    on('btn-cup-again', () => this.startCup());
+    on('btn-cup-menu', () => this.goTitle());
+    document.querySelectorAll('[data-cup]').forEach((b) => b.addEventListener('click', () => {
+      this.sound.play('click'); this.settings.cup = b.dataset.cup === '1'; this.refreshOptions(); this.updateSelect();
+    }));
     document.querySelectorAll('[data-laps]').forEach((b) => b.addEventListener('click', () => {
       this.sound.play('click'); this.settings.laps = +b.dataset.laps; this.refreshOptions(); this.updateSelect();
     }));
@@ -335,11 +343,12 @@ class Game {
       ], { row: 1 }),
       select: new MenuNav([
         { els: els('btn-prev', 'btn-next', 'truck-name'), change: (dir) => { this.sound.play('click'); this.changeTruck(dir); } },
-        opt('[data-circuit]'), opt('[data-laps]'), opt('[data-diff]'), opt('[data-quality]'), opt('[data-split]'),
+        opt('[data-cup]'), opt('[data-circuit]'), opt('[data-laps]'), opt('[data-diff]'), opt('[data-quality]'), opt('[data-split]'),
         { items: els('btn-back', 'btn-start') },
       ], { ok: () => { this.sound.play('click'); this.confirmSelect(); }, col: 1 }),
       pause: new MenuNav(['btn-resume', 'btn-restart', 'btn-fs-pause', 'btn-quit'].map((id) => ({ items: els(id) }))),
-      results: new MenuNav([{ items: els('btn-again') }, { items: els('btn-change', 'btn-menu') }]),
+      results: new MenuNav([{ items: els('btn-again', 'btn-cup-next') }, { items: els('btn-change', 'btn-menu', 'btn-cup-quit') }]),
+      podium: new MenuNav([{ items: els('btn-cup-again', 'btn-cup-menu') }]),
     };
     // el foco solo se ve al manejar con mando o teclado; el ratón o el dedo lo esconden
     const hide = (e) => {
@@ -362,7 +371,7 @@ class Game {
   // menú que se está viendo (o null en carrera)
   menuName() {
     if (this.state === 'finished') return this.resultsT < -1 ? 'results' : null;
-    return { title: 'title', select: 'select', paused: 'pause' }[this.state] || null;
+    return { title: 'title', select: 'select', paused: 'pause', podium: 'podium' }[this.state] || null;
   }
 
   toggleFullscreen() {
@@ -378,6 +387,13 @@ class Game {
     document.querySelectorAll('[data-quality]').forEach((b) => b.classList.toggle('sel', b.dataset.quality === this.settings.quality));
     document.querySelectorAll('[data-circuit]').forEach((b) => b.classList.toggle('sel', b.dataset.circuit === this.settings.circuit));
     $('circuit-desc').textContent = `${this.circuit.name}: ${this.circuit.desc}`;
+    // campeonato: la fila de circuito se cambia por el recorrido
+    const cup = !!this.settings.cup;
+    document.querySelectorAll('[data-cup]').forEach((b) => b.classList.toggle('sel', (b.dataset.cup === '1') === cup));
+    document.querySelector('.opt-circuit').classList.toggle('hidden', cup);
+    $('circuit-desc').classList.toggle('hidden', cup);
+    $('cup-route').classList.toggle('hidden', !cup);
+    $('cup-route').textContent = 'Recorrido: ' + newCup([]).ids.map((id) => circuitById(id).short).join(' → ');
     const useWin = this.settings.split === 'window' && this.win2Ready();
     document.querySelectorAll('[data-split]').forEach((b) => b.classList.toggle('sel', (b.dataset.split === 'window') === useWin));
     const fileMode = location.protocol === 'file:';
@@ -398,7 +414,7 @@ class Game {
   }
 
   showScreen(name) {
-    for (const id of ['title', 'select', 'pause', 'results']) $('screen-' + id).classList.toggle('hidden', id !== name);
+    for (const id of ['title', 'select', 'pause', 'results', 'cupnext', 'podium']) $('screen-' + id).classList.toggle('hidden', id !== name);
     const racing = name === null;
     for (const v of this.views) v.hud.show(racing || name === 'pause');
     $('touch').classList.toggle('hidden', !(racing && this.isTouch && this.humans.length === 1));
@@ -413,6 +429,7 @@ class Game {
   }
 
   goTitle() {
+    this.endCup();
     this.sound.engineStop();
     this.sound.musicStart(false);
     this.state = 'title';
@@ -423,6 +440,7 @@ class Game {
   }
 
   goSelect(mode = this.settings.mode) {
+    this.endCup();
     this.settings.mode = mode;
     this.titleSel = mode === 2 ? 1 : 0;
     this.selectStep = 0;
@@ -456,7 +474,8 @@ class Game {
       this.menus.select.reset();
       return;
     }
-    this.startRace();
+    if (this.settings.cup) this.startCup();
+    else this.startRace();
   }
 
   backSelect() {
@@ -484,6 +503,7 @@ class Game {
       `<div class="stat"><span>${l}</span><div class="bar">${[1, 2, 3, 4, 5].map((i) => `<i class="${i <= def.stats[k] ? 'on' : ''}"></i>`).join('')}</div></div>`).join('');
     const rec = this.records[this.recordKey(def.id, this.settings.laps)];
     $('truck-record').textContent = rec ? `Récord con ${this.settings.laps} ${this.settings.laps === 1 ? 'vuelta' : 'vueltas'}: ${fmtTime(rec)}` : '';
+    if (this.settings.cup) $('truck-record').textContent = this.cupRecordText();
     $('truck-dots').innerHTML = TRUCKS.map((t, i) => {
       const taken = this.selectStep === 1 && i === this.settings.truck;
       return `<i class="${i === cur ? 'on' : ''}${taken ? ' taken' : ''}" style="background:${hex(t.color)}"></i>`;
@@ -692,6 +712,8 @@ class Game {
     this.showScreen(null);
     this.sound.musicStop();
     this.sound.engineStart();
+    document.body.classList.toggle('two', this.views.filter((v) => !v.external).length === 2);
+    if (this.cup) $('cup-banner').textContent = `CARRERA ${this.cup.round + 1} DE ${this.cup.ids.length} · ${this.circuit.name.toUpperCase()}`;
   }
 
   pause() {
@@ -826,9 +848,196 @@ class Game {
       else if (p.newLapRecord) s += ' · ¡Récord de vuelta!';
       return s;
     }).join('<br>');
+    this.cupResults(rows);
     this.showScreen('results');
     this.sound.musicStart(false);
     for (const v of this.views) if (v.external) v.hud.message(placeOf(v.player) === 1 ? '¡GANASTE!' : `¡${ORDINAL[placeOf(v.player) - 1]}!`, 1e9, 'warn');
+  }
+
+  // ------------------------------------------------------------ campeonato
+  // Empieza un campeonato con los camiones, vueltas y dificultad elegidos
+  startCup() {
+    this.leavePodium();
+    const ids = [this.settings.truck];
+    if (this.settings.mode === 2) ids.push(this.settings.truck2);
+    this.cup = newCup(ids.map((i) => TRUCKS[i].id));
+    this.cupGo();
+  }
+
+  // Botón «Siguiente circuito» (o «Ver podio» tras la última)
+  cupNext() {
+    const c = this.cup;
+    if (!c || this.state !== 'finished') return;
+    if (c.round >= c.ids.length - 1) { this.showPodium(); return; }
+    c.round++;
+    this.cupGo();
+  }
+
+  // Va a la carrera actual del campeonato; si hay que cargar el circuito, antes enseña un aviso
+  cupGo() {
+    const c = this.cup;
+    const id = c.ids[c.round];
+    if (this.circuit.id === id) { this.startRace(); return; }
+    this.sound.engineStop();
+    this.state = 'cupnext';
+    this.cupWait = 2; // dos fotogramas: el aviso se dibuja antes de la carga, que bloquea
+    $('cupnext-round').textContent = `CARRERA ${c.round + 1} DE ${c.ids.length}`;
+    $('cupnext-name').textContent = `Siguiente: ${circuitById(id).name}`;
+    this.showScreen('cupnext');
+  }
+
+  cupLoad() {
+    this.loadCircuit(this.cup.ids[this.cup.round]);
+    this.startRace();
+  }
+
+  // Sale del campeonato (menú, abandonar…) y deja el circuito elegido en la selección
+  endCup() {
+    this.leavePodium();
+    if (!this.cup) return;
+    this.cup = null;
+    this.cupResults(null);
+    if (this.circuit.id !== this.settings.circuit) this.loadCircuit(this.settings.circuit);
+  }
+
+  cupRecordText() {
+    const n = this.records.copas || 0, best = this.records.copaMejor || 0;
+    return `Copas ganadas: ${n}` + (best ? ` · Mejor: ${best} puntos` : '');
+  }
+
+  // Tabla de la clasificación general
+  cupTableHTML() {
+    const c = this.cup;
+    const two = c.humans.length === 2;
+    return standings(c).map((e, i) => {
+      const def = TRUCKS.find((t) => t.id === e.id);
+      const h = c.humans.indexOf(e.id);
+      const cls = h === 0 ? 'me' : h === 1 ? 'me2' : '';
+      const tag = two && h >= 0 ? ` <b class="tag">J${h + 1}</b>` : '';
+      return `<tr class="${cls}" data-id="${e.id}"><td>${i + 1}</td><td><i style="background:${hex(def.color)}"></i>${def.name}${tag}</td><td>${e.pts} <small>ptos.</small></td></tr>`;
+    }).join('');
+  }
+
+  // Resultados de una carrera del campeonato: puntos ganados y clasificación general (rows = null: carrera suelta)
+  cupResults(rows) {
+    const on = !!(this.cup && rows);
+    for (const id of ['btn-again', 'btn-change', 'btn-menu']) $(id).classList.toggle('hidden', on);
+    for (const id of ['btn-cup-next', 'btn-cup-quit', 'res-round', 'cup-general']) $(id).classList.toggle('hidden', !on);
+    $('screen-results').classList.toggle('cup', on);
+    if (!on) return;
+    const c = this.cup;
+    addRace(c, rows.map((r) => r.v.def.id));
+    $('res-round').textContent = `CARRERA ${c.round + 1} DE ${c.ids.length} · ${this.circuit.name.toUpperCase()}`;
+    [...$('res-table').rows].forEach((tr, i) => {
+      const td = tr.insertCell();
+      td.className = 'pts';
+      td.textContent = '+' + c.table[rows[i].v.def.id].gained;
+    });
+    $('cup-table').innerHTML = this.cupTableHTML();
+    $('btn-cup-next').textContent = c.round === c.ids.length - 1 ? 'Ver podio' : 'Siguiente circuito';
+  }
+
+  // Podio final en la sala de exposición
+  showPodium() {
+    const c = this.cup;
+    const st = standings(c);
+    const S = this.show;
+    this.sound.engineStop();
+    this.state = 'podium';
+    if (!this.podium) {
+      this.podium = buildPodium();
+      S.scene.add(this.podium.group);
+    }
+    const P = this.podium;
+    P.trucks = st.slice(0, 3).map((e, i) => {
+      const t = S.trucks[TRUCKS.findIndex((d) => d.id === e.id)];
+      P.group.add(t.root);
+      t.root.position.copy(P.spots[i]);
+      t.root.rotation.set(0, [0.35, 0.75, -0.05][i], 0);
+      t.root.visible = true;
+      return t;
+    });
+    P.group.visible = true;
+    S.table.visible = false;
+    setCheapMaterials(S.scene, !!this.qualityLevel().cheap);
+    // rótulos
+    const two = c.humans.length === 2;
+    const nameOf = (id) => TRUCKS.find((t) => t.id === id).name;
+    const placeOf = (id) => st.findIndex((e) => e.id === id) + 1;
+    const champ = st[0];
+    const h = c.humans.indexOf(champ.id);
+    $('screen-podium').classList.toggle('ai', h < 0);
+    if (h >= 0) {
+      $('podium-title').textContent = `¡CAMPEÓN: JUGADOR ${h + 1}!`;
+      $('podium-sub').textContent = `${nameOf(champ.id)} · ${champ.pts} puntos` + (two ? ` · Jugador ${2 - h}: ${placeOf(c.humans[1 - h])}.º` : '');
+    } else {
+      $('podium-title').textContent = `Campeón: ${nameOf(champ.id)}`;
+      $('podium-sub').textContent = two
+        ? c.humans.map((id, i) => `Jugador ${i + 1}: ${placeOf(id)}.º`).join(' · ')
+        : `Has quedado ${placeOf(c.humans[0])}.º con ${c.table[c.humans[0]].pts} puntos`;
+    }
+    $('podium-table').innerHTML = this.cupTableHTML();
+    // récords: copas ganadas y mejor puntuación de los jugadores
+    if (!c.done) {
+      c.done = true;
+      const best = Math.max(...c.humans.map((id) => c.table[id].pts));
+      c.newBest = best > (this.records.copaMejor || 0);
+      if (h >= 0) this.records.copas = (this.records.copas || 0) + 1;
+      if (c.newBest) this.records.copaMejor = best;
+      saveJSON('megamonstruos.records', this.records);
+    }
+    $('podium-record').textContent = this.cupRecordText() + (c.newBest ? ' · ¡Nuevo récord!' : '');
+    // confeti de papel (CSS: no cuesta nada dibujarlo)
+    const conf = $('confetti');
+    if (!conf.children.length) {
+      const cols = ['#ffcc00', '#ff6a00', '#e2231a', '#3ca0ff', '#39e639', '#ff4fd8', '#fff'];
+      conf.innerHTML = [...Array(70)].map((_, i) => `<i style="left:${(Math.random() * 100).toFixed(1)}%;background:${cols[i % cols.length]};animation-delay:${(-Math.random() * 6).toFixed(2)}s;animation-duration:${(3.5 + Math.random() * 3).toFixed(2)}s"></i>`).join('');
+    }
+    this.sound.play('finish');
+    this.showScreen('podium');
+  }
+
+  leavePodium() {
+    const P = this.podium;
+    if (!P || !P.group.visible) return;
+    for (const t of P.trucks) {
+      this.show.table.add(t.root);
+      t.root.position.set(0, 0, 0);
+      t.root.rotation.set(0, 0, 0);
+      t.root.visible = false;
+    }
+    P.trucks = [];
+    P.group.visible = false;
+    this.show.table.visible = true;
+    this.resize();
+  }
+
+  renderPodium(dt) {
+    const r = this.renderer;
+    const S = this.show, cam = S.cam;
+    const W = window.innerWidth, H = window.innerHeight;
+    // con el panel a la derecha, el podio queda centrado en el hueco de la izquierda
+    const side = W > H * 1.2;
+    const pw = side ? Math.min(440, W * 0.4) + W * 0.03 : 0;
+    const far = side ? 1 : 1.5;
+    cam.position.set(Math.sin(this.time * 0.3) * 4, 7.5 * far, 29 * far);
+    if (side) {
+      cam.aspect = (W + pw) / H;
+      cam.setViewOffset(W + pw, H, pw, 0, W, H);
+    } else {
+      const c = H * 0.22;
+      cam.aspect = W / (H + 2 * c);
+      cam.setViewOffset(W, H + 2 * c, 0, 2 * c, W, H);
+    }
+    cam.lookAt(0, 2.4, 0);
+    cam.updateProjectionMatrix();
+    this.podium.trucks.forEach((t, i) => {
+      t.root.position.y = this.podium.spots[i].y + (i === 0 ? Math.abs(Math.sin(this.time * 3)) * 0.5 : 0);
+      animateTruck(t, { wheelSpin: 0, steer: Math.sin(this.time * 1.2 + i) * 0.5, comp: Math.sin(this.time * 4 + i) * 0.05, dt });
+    });
+    r.setScissorTest(false);
+    r.setViewport(0, 0, W, H);
+    r.render(S.scene, cam);
   }
 
   // ------------------------------------------------------------ simulación
@@ -1054,6 +1263,9 @@ class Game {
     if (this.win2 && this.win2.closed) this.onWindow2Closed();
     inp.padEdges();
     this.menuInput(dt);
+    // campeonato: el aviso «Siguiente…» se dibuja antes de cargar el circuito
+    if (this.state === 'cupnext' && --this.cupWait <= 0) this.cupLoad();
+    { const on = !!this.cup && this.state === 'countdown'; if (on !== this.cupBannerOn) { this.cupBannerOn = on; $('cup-banner').classList.toggle('hidden', !on); } }
 
     const ctrls = this.readControls(dt);
     if (this.state === 'race') {
@@ -1150,6 +1362,10 @@ class Game {
         if (inp.pressed('KeyP', 'PadStart') || back) this.resume();
         else if (ok) menu.ok();
         break;
+      case 'podium':
+        if (inp.pressed('Enter', 'NumpadEnter', 'PadA', 'PadStart')) menu.ok();
+        else if (back) { this.sound.play('click'); this.goTitle(); }
+        break;
       case 'finished':
         if (menu) {
           // sin Espacio: es la tecla del objeto y alguien podría seguir pulsándola al llegar
@@ -1158,6 +1374,8 @@ class Game {
         break;
     }
     if (inp.pressed('KeyM')) this.toggleMute();
+    // si el panel no cabe entero, se desplaza hasta la fila enfocada
+    if (menu && (dir.Up || dir.Down)) document.querySelector('.focus')?.scrollIntoView?.({ block: 'nearest' });
   }
 
   updateCountdown(dt, ctrls) {
@@ -1348,6 +1566,8 @@ class Game {
   render(dt) {
     this.updateBlobs();
     const r = this.renderer;
+    if (this.state === 'podium') { this.renderPodium(dt); return; }
+    if (this.state === 'cupnext') return; // el aviso tapa la pantalla mientras se carga
     if (this.state === 'select') {
       this.showSpin += dt;
       this.show.table.rotation.y = this.time * 0.45;
@@ -1396,8 +1616,9 @@ class Game {
     this.layoutViews();
     // la sala se desplaza para que el camión no quede detrás del panel
     const sc = this.show.cam;
-    if (w >= 900) {
-      const P = Math.min(470, w * 0.42) + w * 0.03;
+    if (w >= 900 || (w >= 600 && h <= 500 && w > h)) {
+      // (en móvil apaisado el panel también va a la derecha: ver style.css)
+      const P = w >= 900 ? Math.min(470, w * 0.42) + w * 0.03 : w * 0.45 + 16;
       sc.position.set(13.5, 6.4, 16);
       sc.aspect = (w + P) / h;
       sc.setViewOffset(w + P, h, P, 0, w, h);
