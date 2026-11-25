@@ -14,7 +14,8 @@ Controles:
 | ← → / A D | Girar |
 | ↑ / W | Acelerar |
 | ↓ / S | Frenar y marcha atrás |
-| Espacio / Mayús / E | Usar objeto |
+| Mayús (mantener) | Derrapar |
+| Espacio / E | Usar objeto |
 | R | Volver a la pista |
 | P / Esc | Pausa |
 | M | Silencio |
@@ -27,7 +28,8 @@ También funciona con botones táctiles en móvil o tableta, y con mando:
 | Stick o cruceta | Girar |
 | A o gatillo derecho | Acelerar |
 | B o gatillo izquierdo | Frenar y marcha atrás |
-| X, RB o LB | Usar objeto |
+| RB (mantener) | Derrapar |
+| X o LB | Usar objeto |
 | Y | Volver a la pista |
 | Start | Pausa |
 
@@ -38,7 +40,7 @@ El mando vibra con los golpes y las caídas si lo admite.
 
 Con mandos de Nintendo Switch (también los de cable de PDP, HORI o PowerA) el juego sigue las letras impresas
 en el mando: A acelera y acepta, B frena y vuelve, X usa el objeto e Y devuelve a la pista; ZR acelera, ZL
-frena, L y R usan el objeto y «+» es la pausa. La tecla F enseña, además de los fps, qué mandos ve el juego
+frena, R derrapa, L usa el objeto y «+» es la pausa. La tecla F enseña, además de los fps, qué mandos ve el juego
 y qué botones se están pulsando.
 
 Para jugar en la tele: conecta el ordenador por HDMI y pulsa el botón de pantalla completa de la portada
@@ -52,6 +54,12 @@ cuando salga el «2» para una salida perfecta (turbo largo); si aceleras más t
 con un turbo corto. Si aceleras antes del «2», el humo se vuelve negro y el motor se ahoga: te quedas un momento
 parado. A los rivales también les pasa de vez en cuando.
 
+El derrape: mantén el botón de derrapar mientras giras a buena velocidad. El camión da un saltito, la trasera
+se va y sigue girando hacia ese lado; con la dirección abres o cierras la curva. Cuanto más dura el derrape (y
+más cerrado), más carga: las chispas de las ruedas pasan de azules a naranjas y a moradas, y al soltar sales con
+un turbo de 0,7, 1,2 o 1,9 segundos. Si sueltas antes de las chispas azules no hay turbo, y se pierde si te
+golpean, frenas o caes. Los rivales no derrapan.
+
 ## Dos jugadores
 
 En la portada, elige «2 JUGADORES». Cada uno elige su camión por turnos.
@@ -59,7 +67,8 @@ En la portada, elige «2 JUGADORES». Cada uno elige su camión por turnos.
 | | Jugador 1 | Jugador 2 |
 | --- | --- | --- |
 | Conducir | W A S D | Flechas |
-| Objeto | Q o Espacio | Intro o Mayús derecha |
+| Derrapar | Mayús izquierda | Mayús derecha |
+| Objeto | Q o Espacio | Intro o Control derecho |
 | Volver a la pista | R | Retroceso |
 | Mando | el primero conectado | el segundo conectado |
 
@@ -123,6 +132,7 @@ npm run test:memoria      # comprueba que cambiar de circuito no acumula memoria
 node tools/mando.mjs      # prueba los menús con un mando simulado
 node tools/copa.mjs       # corre un campeonato entero con piloto automático
 node tools/salida.mjs     # prueba la salida: motor ahogado, salida perfecta y cámara sin tirones
+node tools/derrape.mjs    # prueba el derrape: niveles, turbos, cancelaciones y controles
 node tools/bench.mjs      # mide cuánto cuesta cada fotograma sin tarjeta gráfica (tarda: úsalo con el equipo libre)
 node tools/circuits.mjs --medir --carreras 3 --vueltas 2 --dif normal   # cómo se defiende la IA y equilibrio de objetos
 ```
