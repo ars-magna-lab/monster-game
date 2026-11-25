@@ -118,6 +118,7 @@ npm run test:memoria      # comprueba que cambiar de circuito no acumula memoria
 node tools/mando.mjs      # prueba los menús con un mando simulado
 node tools/copa.mjs       # corre un campeonato entero con piloto automático
 node tools/salida.mjs     # prueba la salida: motor ahogado, salida perfecta y cámara sin tirones
+node tools/bench.mjs      # mide cuánto cuesta cada fotograma sin tarjeta gráfica (tarda: úsalo con el equipo libre)
 node tools/circuits.mjs --medir --carreras 3 --vueltas 2 --dif normal   # cómo se defiende la IA y equilibrio de objetos
 ```
 
