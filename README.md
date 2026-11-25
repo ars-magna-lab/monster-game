@@ -58,7 +58,8 @@ El derrape: mantén el botón de derrapar mientras giras a buena velocidad. El c
 se va y sigue girando hacia ese lado; con la dirección abres o cierras la curva. Cuanto más dura el derrape (y
 más cerrado), más carga: las chispas de las ruedas pasan de azules a naranjas y a moradas, y al soltar sales con
 un turbo de 0,7, 1,2 o 1,9 segundos. Si sueltas antes de las chispas azules no hay turbo, y se pierde si te
-golpean, frenas o caes. Los rivales no derrapan.
+golpean, frenas o caes. Los rivales también derrapan: en Fácil poco, en Normal en muchas curvas y en Difícil
+casi siempre y hasta las chispas moradas.
 
 ## Dos jugadores
 
@@ -112,6 +113,13 @@ terminan el campeonato. Se guardan las copas ganadas y la mejor puntuación. Val
   barriles explosivos y coches para aplastar.
 - Cajas sorpresa con seis objetos: nitro, supersalto, onda expansiva, neumático loco (se lanza hacia
   delante), barril explosivo (se deja detrás) y cohete buscador (va a por el de delante; nunca le toca al primero).
+- **Modo gigante**, el objeto de superremontada: solo les puede tocar a los que van últimos y lejos del primero,
+  y nunca hay dos a la vez. Durante 6 segundos el camión se hace enorme, corre como con turbo, no le afectan
+  troncos, bolas, barriles, cohetes, redes ni barro, y chafa a todo el que toca. A los fosos sí se puede caer.
+- **Chafar**: si caes encima de otro camión (con una rampa o el supersalto) lo chafas, sea del tamaño que sea.
+  Los camiones grandes también chafan a los pequeños si los embisten de frente y bastante más rápido: el Mamut
+  a casi todos, el Megalodón y el Dragón al Escorpión y al Relámpago, y la Trituradora al Relámpago. El chafado
+  se queda aplastado y parado un momento, y después no lo pueden volver a chafar durante unos segundos.
 - Récords guardados en el navegador.
 
 ## Desarrollo
@@ -132,7 +140,8 @@ npm run test:memoria      # comprueba que cambiar de circuito no acumula memoria
 node tools/mando.mjs      # prueba los menús con un mando simulado
 node tools/copa.mjs       # corre un campeonato entero con piloto automático
 node tools/salida.mjs     # prueba la salida: motor ahogado, salida perfecta y cámara sin tirones
-node tools/derrape.mjs    # prueba el derrape: niveles, turbos, cancelaciones y controles
+node tools/derrape.mjs    # prueba el derrape: niveles, turbos, cancelaciones, controles y el de la IA
+node tools/remontada.mjs  # prueba el modo gigante (reparto y efecto) y chafar camiones
 node tools/bench.mjs      # mide cuánto cuesta cada fotograma sin tarjeta gráfica (tarda: úsalo con el equipo libre)
 node tools/circuits.mjs --medir --carreras 3 --vueltas 2 --dif normal   # cómo se defiende la IA y equilibrio de objetos
 ```
