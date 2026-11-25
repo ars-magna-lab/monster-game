@@ -79,7 +79,7 @@ await p.evaluate(() => {
     const finish = [...g.vehicles].sort((a, b) => (a.finished && b.finished ? a.finishPlace - b.finishPlace : a.finished ? -1 : b.finished ? 1 : b.progress - a.progress));
     return {
       id, diff: g.settings.diff, L: Math.round(g.track.length),
-      trucks: g.vehicles.map((v) => ({ name: v.def.name, size: v.size, ai: !v.isPlayer, finished: v.finished, time: v.finished ? +v.finishTime.toFixed(1) : null, laps: v.lapTimes.map((x) => +x.toFixed(1)), place: finish.indexOf(v) + 1, s: Math.round(v.s), c: per.get(v) })),
+      trucks: g.vehicles.map((v) => ({ name: v.def.name, size: v.baseSize ?? v.size, ai: !v.isPlayer, finished: v.finished, time: v.finished ? +v.finishTime.toFixed(1) : null, laps: v.lapTimes.map((x) => +x.toFixed(1)), place: finish.indexOf(v) + 1, s: Math.round(v.s), c: per.get(v) })),
       items,
     };
   };
