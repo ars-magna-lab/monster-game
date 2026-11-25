@@ -1582,12 +1582,20 @@ class Game {
     }
   }
 
-  // Derrape: chispas del color del nivel en las dos ruedas traseras (humo claro antes del nivel 1)
+  // Derrape: chispas del color del nivel en las dos ruedas traseras (humo claro antes del nivel 1).
+  // Los camiones de la IA echan menos y solo si alguna cámara los tiene cerca.
   driftFx(v, dt) {
+    let few = 1;
+    if (!this.viewOf(v)) {
+      let near = Infinity;
+      for (const view of this.views) near = Math.min(near, view.camera.position.distanceToSquared(v.mesh.position));
+      if (near > 90 * 90) return;
+      few = 0.45;
+    }
     const lv = v.drift.level;
     const th = v.th + v.driftYaw; // la carrocería se dibuja girada
     const fx = Math.cos(th), fz = Math.sin(th), sz = v.size;
-    const rate = (lv ? 32 : 14) * (this.fx.cheap ? 0.5 : 1) * dt; // partículas por rueda y fotograma
+    const rate = (lv ? 32 : 14) * few * (this.fx.cheap ? 0.5 : 1) * dt; // partículas por rueda y fotograma
     for (const side of [-1.5, 1.5]) {
       const x = v.x - fx * 1.9 * sz - fz * side * sz, z = v.z - fz * 1.9 * sz + fx * side * sz;
       for (let i = 0; i < 3 && Math.random() < rate - i; i++) {
