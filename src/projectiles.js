@@ -106,6 +106,8 @@ export class Projectiles {
       p.speed = Math.max(vF + 20, ROCKET_SPEED);
       p.target = this.pickTarget(v);
       p.life = 9;
+      // avisa a la víctima: con el supersalto a tiempo puede esquivarlo
+      if (p.target) p.target.events.push({ type: 'rocketWarn' });
     }
     this.list.push(p);
     this.place(p, 0);
@@ -141,7 +143,8 @@ export class Projectiles {
     fx.explosion(p.x, p.y, p.z);
     this.game.boom(p.x, p.y, p.z);
     for (const v of this.game.vehicles) {
-      if (v.state !== 'ok') continue;
+      // el cohete nunca daña a quien lo lanza (el barril propio sí, una vez armado)
+      if (v.state !== 'ok' || (p.kind === 'rocket' && v === p.owner)) continue;
       const dx = v.x - p.x, dz = v.z - p.z;
       const d = Math.hypot(dx, dz);
       if (v !== victim && d > 7) continue;
@@ -193,7 +196,7 @@ export class Projectiles {
 
       // choques con camiones
       for (const v of vs) {
-        if (v.state !== 'ok' || (v === p.owner && p.t < (p.kind === 'barrel' ? 1.2 : 0.6))) continue;
+        if (v.state !== 'ok' || (v === p.owner && (p.kind === 'rocket' || p.t < (p.kind === 'barrel' ? 1.2 : 0.6)))) continue;
         const dx = v.x - p.x, dz = v.z - p.z;
         const R = HIT_R * v.size;
         if (dx * dx + dz * dz > R * R || Math.abs(v.y + 1.5 - p.y) > 3.5 * v.size) continue;

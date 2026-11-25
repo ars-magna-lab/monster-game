@@ -209,7 +209,7 @@ export class Obstacles {
         m.rotation.y = Math.random() * 6;
         m.castShadow = true;
         this.group.add(m);
-        this.barrels.push({ s, d, mesh: m, alive: true, timer: 0 });
+        this.barrels.push({ s, d, mesh: m, alive: true, timer: 0, fuse: 0 });
       }
     }
 
@@ -262,6 +262,12 @@ export class Obstacles {
     if (this.balls.some(ahead)) return true;
     if (this.nets.some((n) => ahead(n) && n.open > 0.3)) return true;
     return false;
+  }
+
+  // Para la IA: dónde estará (d) un rodillo dentro de dt segundos (misma cuenta que en update)
+  rollerD(o, dt) {
+    const u = (((this.time + dt) / o.period + o.phase) % 1 + 1) % 1;
+    return o.amp * (u < 0.5 ? 4 * u - 1 : 3 - 4 * u);
   }
 
   update(dt, vehicles) {
@@ -435,6 +441,11 @@ export class Obstacles {
         b.mesh.visible = false;
         continue;
       }
+      // mecha encendida por la explosión de un barril vecino (en tiempo de juego)
+      if (b.fuse > 0) {
+        b.fuse -= dt;
+        if (b.fuse <= 0) { this.explodeBarrel(b, vehicles); continue; }
+      }
       b.mesh.visible = true;
       const sc = Math.min(1, b.mesh.scale.x + dt * 3);
       b.mesh.scale.setScalar(sc);
@@ -452,7 +463,7 @@ export class Obstacles {
   }
 
   explodeBarrel(b, vehicles) {
-    b.alive = false; b.timer = 12;
+    b.alive = false; b.timer = 12; b.fuse = 0;
     const P = this.track.pointAt(b.s, b.d);
     const y = this.track.baseAt(b.s);
     this.game.fx.explosion(P.x, y, P.z);
@@ -468,8 +479,8 @@ export class Obstacles {
     }
     // reacción en cadena con los barriles cercanos
     for (const o of this.barrels) {
-      if (o.alive && o !== b && Math.abs(this.rel(o.s, b.s)) < 5 && Math.abs(o.d - b.d) < 5) {
-        setTimeout(() => { if (o.alive) this.explodeBarrel(o, vehicles); }, 180);
+      if (o.alive && o !== b && !(o.fuse > 0) && Math.abs(this.rel(o.s, b.s)) < 5 && Math.abs(o.d - b.d) < 5) {
+        o.fuse = 0.18;
       }
     }
   }

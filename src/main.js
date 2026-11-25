@@ -27,7 +27,7 @@ const DIFF = {
 const PLAYER_MSG = {
   log: '¡TRONCO!', ball: '¡BOLAZO!', boom: '¡BOOM!', net: '¡ATRAPADO EN LA RED!', crush: '¡CRUNCH!',
   fallPit: '¡AL FOSO!', fallWater: '¡COCODRILOS!', waved: '¡ONDA EXPANSIVA!', nitro: '¡NITRO!', jump: '¡SUPERSALTO!',
-  tired: '¡NEUMATAZO!', barreled: '¡BARRILAZO!', rocketed: '¡COHETAZO!',
+  tired: '¡NEUMATAZO!', barreled: '¡BARRILAZO!', rocketed: '¡COHETAZO!', rocketWarn: '¡TE SIGUE UN COHETE!',
 };
 const ORDINAL = ['PRIMERO', 'SEGUNDO', 'TERCERO', 'CUARTO', 'QUINTO', 'SEXTO'];
 const KEYHINT = { solo: 'ESPACIO', p1: 'Q / ESPACIO', p2: 'INTRO' };
@@ -861,6 +861,7 @@ class Game {
           case 'barreled': case 'rocketed': shake(1); break;
           case 'throw': near('throw'); break;
           case 'rocket': near('rocket'); break;
+          case 'rocketWarn': if (isP) this.sound.play('wrong'); break;
           case 'net': near('net'); break;
           case 'crush': near('crunch', 0.9); shake(0.3); break;
           case 'fallPit': case 'fallWater': near('fall', 0.8); break;
@@ -883,7 +884,7 @@ class Game {
         }
         const msg = e.type === 'fallWater' ? pitText(this.track.theme, e.liquid) : e.type === 'log' ? this.track.theme.rollerHit : PLAYER_MSG[e.type];
         if (view && msg) {
-          const big = ['fallPit', 'fallWater', 'net', 'ball', 'boom'].includes(e.type);
+          const big = ['fallPit', 'fallWater', 'net', 'ball', 'boom', 'rocketWarn'].includes(e.type);
           view.hud.message(msg, big ? 1.6 : 1.0, big ? 'warn' : '');
         }
       }
