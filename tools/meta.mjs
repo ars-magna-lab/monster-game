@@ -70,6 +70,8 @@ const res = await page.evaluate((id) => {
   check(appearedAt && appearedAt.lap === 2 && appearedAt.m >= L / 2 && appearedAt.m < L / 2 + 25,
     `la dorada aparece en ${JSON.stringify(appearedAt)} (se esperaba vuelta 2, a ${(L / 2).toFixed(0)} m)`);
   check(g.cups.cups[1].state === 'none' && g.cups.cups[2].state === 'none', 'plata o bronce antes de tiempo');
+  // espera de pie en el suelo, a la altura de los camiones
+  { const c = g.cups.cups[0]; g.simulate(0.6); const h = c.mesh.position.y - g.track.baseAt(0); check(h >= 0 && h < 1 && c.mesh.scale.x * 3 > 2.8 && c.mesh.scale.x * 3 < 3.8, `la dorada espera a ${h.toFixed(1)} m del suelo y mide ${(c.mesh.scale.x * 3).toFixed(1)} m`); }
   log.push(`dorada a la vista con el primero en la vuelta ${appearedAt?.lap}, a ${appearedAt?.m.toFixed(0)} m de ${L.toFixed(0)}`);
   // hasta que llegan cuatro
   const byPlace = [];
@@ -94,17 +96,26 @@ const res = await page.evaluate((id) => {
   const s2 = snaps.find((x) => x.place === 2);
   check(s2 && s2.states[1] === 'flying' && s2.states[2] === 'waiting', `al llegar el segundo: ${s2 && s2.states}`);
   // un rato después: las tres encima de sus camiones, a la vista
+  // la dorada, al cogerla: salta a la rueda en ~0,35 s y el camión hace el caballito
+  { const c = g.cups.cups[0], v = c.holder; const tmp = new c.mesh.position.constructor();
+    run(5, () => c.state === 'held' && c.t > 0.9);
+    check(c.state === 'held' && v.wheelieK > 0.6, `sin caballito con la dorada (${c.state}, ${v.wheelieK.toFixed(2)})`);
+    check(c.mesh.position.distanceTo(g.cups.wheelPos(v, c.side, tmp)) < 0.3, 'la dorada no está sobre la rueda delantera'); }
   run(2);
   for (const c of g.cups.cups) {
     check(c.state === 'held', `la copa ${c.T.name} no está encima del camión (${c.state})`);
     const v = c.holder;
-    if (v) check(Math.hypot(c.mesh.position.x - v.x, c.mesh.position.z - v.z) < 0.5 && c.mesh.position.y > v.y + 2, `la copa ${c.T.name} no sigue a su camión`);
+    if (v) {
+      const d = Math.hypot(c.mesh.position.x - v.x, c.mesh.position.z - v.z);
+      check(d > 1.5 && d < 4.5 * v.size && c.mesh.position.y > v.y + 1.5, `la copa ${c.T.name} no va en la rueda de su camión (a ${d.toFixed(1)} m)`);
+    }
   }
   log.push(`2 vueltas: oro ${byPlace[0].def.name} (IA), plata ${byPlace[1].def.name}, bronce ${byPlace[2].def.name}; el cuarto (${byPlace[3].def.name}) nada`);
 
   // ---------- 2. Reiniciar: todo como al principio
   g.startRace(); g.countdown = 0.01;
   check(allNone(), `al reiniciar quedan copas: ${cupsState()}`);
+  check(g.vehicles.every((v) => !v.wheelie), 'al reiniciar sigue algún caballito');
   g.simulate(1);
   check(allNone(), 'al reiniciar reaparece una copa');
 

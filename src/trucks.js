@@ -74,8 +74,8 @@ const STYLES = {
 
 export const WHEEL_R = 1.1;
 const WHEEL_W = 0.95;
-const WHEEL_X = 1.6;
-const WHEEL_Z = 1.75;
+export const WHEEL_X = 1.6;
+export const WHEEL_Z = 1.75;
 export const BODY_Y = 2.0;
 
 let shared = null;

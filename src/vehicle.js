@@ -1,6 +1,9 @@
 // Física arcade de un monster truck sobre la pista.
 import { LIMIT } from './track.js';
-import { buildTruck, animateTruck, WHEEL_R } from './trucks.js';
+import { buildTruck, animateTruck, WHEEL_R, WHEEL_Z } from './trucks.js';
+
+// Ángulo del caballito (rad): unos 35°
+export const WHEELIE_ANG = 0.61;
 
 export const G = 24;
 export const HALF_W = 2.0;
@@ -78,6 +81,8 @@ export class Vehicle {
 
   reset() {
     this.x = 0; this.y = 0; this.z = 0; this.th = 0;
+    // caballito (solo visual, para levantar la copa de la meta): objetivo 0..1 y valor suavizado
+    this.wheelie = 0; this.wheelieK = 0;
     this.vx = 0; this.vz = 0; this.vy = 0;
     this.onGround = true; this.groundH = 0; this.wasGround = true;
     this.idx = -1; this.s = 0; this.d = 0; this.prevS = 0;
@@ -501,7 +506,11 @@ export class Vehicle {
     this.driftYaw += (yawT - this.driftYaw) * Math.min(1, dt / 0.15 * 2.5);
     if (this.hopT > 0) this.hopT = Math.max(0, this.hopT - dt);
     const hop = this.hopT > 0 ? Math.sin(Math.PI * (1 - this.hopT / DRIFT.hop)) * 0.5 * this.size : 0;
-    m.position.set(this.x, this.y + hop, this.z);
+    // caballito: gira sobre el eje trasero, que sigue en el suelo (la física no cambia)
+    this.wheelieK = (this.wheelieK || 0) + ((this.wheelie || 0) - (this.wheelieK || 0)) * Math.min(1, dt * 7);
+    const wa = this.wheelieK * WHEELIE_ANG, rz = WHEEL_Z * this.size;
+    const back = rz * (1 - Math.cos(wa));
+    m.position.set(this.x - Math.cos(this.th) * back, this.y + hop + rz * Math.sin(wa), this.z - Math.sin(this.th) * back);
     // tamaño: gigante y aplastado (al chafarle: plano y ancho; se levanta con un rebote)
     let sy = 1;
     if (this.squashT < this.squashDur + CRUSH.rise) {
@@ -513,7 +522,7 @@ export class Vehicle {
     const sxz = 1 + (CRUSH.flatXZ - 1) * clamp((1 - sy) / (1 - CRUSH.flatY), 0, 1.5);
     m.scale.set(this.size * sxz, this.size * sy, this.size * sxz);
     m.rotation.order = 'YXZ';
-    m.rotation.set(-this.pitch, Math.PI / 2 - this.th - this.driftYaw + this.spin, this.roll);
+    m.rotation.set(-this.pitch - wa, Math.PI / 2 - this.th - this.driftYaw + this.spin, this.roll);
     // parpadea solo al reaparecer o al salir de la red; el supersalto protege sin parpadear
     // el gigante parpadea el último segundo, avisando de que se acaba
     const blink = this.blink > 0 && this.state === 'ok' ? Math.floor(this.blink * 12) % 2 === 0

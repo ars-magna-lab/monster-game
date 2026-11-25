@@ -1787,13 +1787,22 @@ class Game {
         view.camPos.set(p.x + fx * along - fz * lat, h0 + (ch.want.y - h0) * e, p.z + fz * along + fx * lat);
         view.camLook.set(p.x, p.y + 1.8 * big, p.z).lerp(ch.look, e);
       }
-    } else if (p.finished && (st === 'race' || this.resultsT < 2.2 || this.cups.heldBy(p)) && !this.cups.ceremony(p)) {
+    } else if (p.finished && this.cups.ceremony(p) && st !== 'paused') {
+      // celebración: vista de tres cuartos delantera, del lado de la rueda que lleva la copa, a la
+      // altura de las ruedas (desde detrás la carrocería taparía la rueda y la copa)
+      const side = this.cups.cupSide(p) || 1;
+      const fx = Math.cos(p.th), fz = Math.sin(p.th);
+      const sx = side * fz, sz = -side * fx; // x local del camión en el mundo (lado de la copa)
+      const k = 1 - Math.exp(-dt * 7);
+      view.camPos.lerp(new THREE.Vector3(p.x + sx * 11 + fx * 7, p.y + 2.6, p.z + sz * 11 + fz * 7), k);
+      view.camLook.set(p.x + fx * 1.5 + sx * 1.5, p.y + 2.4, p.z + fz * 1.5 + sz * 1.5);
+    } else if (p.finished && (st === 'race' || this.resultsT < 2.2 || this.cups.heldBy(p))) {
       const a = this.time * 0.25 + view.idx * Math.PI;
       // con una copa encima, la cámara mira por encima del camión: así el camión y la copa quedan
       // en la parte de abajo de la pantalla y no los tapa el «¡GANASTE!» del centro
       const cup = this.cups.heldBy(p);
-      view.camPos.lerp(new THREE.Vector3(p.x + Math.cos(a) * 16, p.y + 7, p.z + Math.sin(a) * 16), 1 - Math.exp(-dt * 2));
-      view.camLook.set(p.x, p.y + (cup ? 5 : 2), p.z);
+      view.camPos.lerp(new THREE.Vector3(p.x + Math.cos(a) * (cup ? 13 : 16), p.y + (cup ? 3.5 : 7), p.z + Math.sin(a) * (cup ? 13 : 16)), 1 - Math.exp(-dt * 2));
+      view.camLook.set(p.x, p.y + (cup ? 2.6 : 2), p.z);
     } else {
       if (p.state !== 'fallen') {
         const moving = Math.abs(p.vF) > 1;
@@ -1808,7 +1817,6 @@ class Game {
       view.camLook.copy(ch.look);
       // levantando la copa: la cámara de carrera, algo más alta y mirando por encima del camión
       // (el camión y la copa quedan enteros en el centro, bajo los textos)
-      if (p.finished && this.cups.ceremony(p)) { view.camPos.y += (p.y + 6.5 * p.size - view.camPos.y) * ky; view.camLook.y += 2.2 * p.size; }
       fovTarget = ch.fov;
     }
     view.fov += (fovTarget - view.fov) * Math.min(1, dt * 3);
