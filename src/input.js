@@ -20,7 +20,37 @@ const KEYMAP = {
   },
 };
 
-const PAD_BUTTONS = { 0: 'A', 1: 'B', 2: 'X', 3: 'Y', 5: 'RB', 9: 'Start' };
+const PAD_BUTTONS = { 0: 'A', 1: 'B', 2: 'X', 3: 'Y', 4: 'LB', 5: 'RB', 9: 'Start' };
+
+// Mandos con las letras de Nintendo (los de Switch). El juego sigue las letras impresas en el
+// mando, no la posición: A acelera y acepta, B frena y vuelve, X usa el objeto e Y devuelve a
+// la pista, igual que dicen las ayudas en pantalla. Además, muchos mandos de Switch con cable
+// (PDP, HORI, PowerA) no llegan al navegador con la disposición estándar, sino con el orden de
+// fábrica: Y B A X L R ZL ZR − + (sticks) Inicio Captura, y la cruceta en los dos últimos ejes.
+const NINTENDO = /nintendo|switch|joy-?con|057e/i;
+const ON = { pressed: true, value: 1 };
+const OFF = { pressed: false, value: 0 };
+
+// Devuelve el mando con los botones en el orden que usa el juego (el estándar de Xbox)
+export function adaptPad(p) {
+  if (!NINTENDO.test(p.id || '')) return p;
+  const b = p.buttons, a = p.axes;
+  let buttons, axes;
+  if (p.mapping === 'standard') {
+    // estándar por posición: 0 abajo (B), 1 derecha (A), 2 izquierda (Y), 3 arriba (X)
+    buttons = Array.from(b);
+    buttons[0] = b[1]; buttons[1] = b[0]; buttons[2] = b[3]; buttons[3] = b[2];
+    axes = a;
+  } else if (b.length >= 10 && a.length >= 2) {
+    const hat = a.length >= 6;
+    const hx = hat ? a[a.length - 2] : 0, hy = hat ? a[a.length - 1] : 0;
+    const dir = (on) => (on ? ON : OFF);
+    buttons = [b[2], b[1], b[3], b[0], b[4], b[5], b[6], b[7], b[8], b[9], b[10], b[11],
+      dir(hy < -0.5), dir(hy > 0.5), dir(hx < -0.5), dir(hx > 0.5), b[12], b[13]].map((x) => x || OFF);
+    axes = [a[0] || 0, a[1] || 0, a[2] || 0, a[3] || 0];
+  } else return p;
+  return { index: p.index, id: p.id, connected: p.connected, timestamp: p.timestamp, mapping: p.mapping, vibrationActuator: p.vibrationActuator, buttons, axes, raw: p };
+}
 
 // Direcciones de los menús: teclas, y botón de la cruceta y eje del stick del mando
 const NAV = {
@@ -104,7 +134,18 @@ export class Input {
         if (!prev || p.timestamp > prev.timestamp) best.set(p.index, p);
       }
     }
-    return [...best.values()].sort((a, b) => a.index - b.index);
+    return [...best.values()].sort((a, b) => a.index - b.index).map(adaptPad);
+  }
+
+  // Para el panel de la tecla F: qué mandos hay, cómo llegan y qué se está pulsando (sin adaptar)
+  padDebug() {
+    return (this.padList || []).map((p, slot) => {
+      const r = p.raw || p;
+      const tipo = p.raw ? 'Nintendo' : r.mapping === 'standard' ? 'estándar' : 'sin adaptar';
+      const bot = Array.from(r.buttons, (x, i) => (x?.pressed ? i : -1)).filter((i) => i >= 0).join(',');
+      const ejes = Array.from(r.axes, (x) => (x || 0).toFixed(1)).join(' ');
+      return `J${slot + 1}: ${tipo} (${r.mapping || 'sin mapa'}, ${r.buttons.length} botones) · pulsados [${bot}] · ejes ${ejes}`;
+    }).join('\n');
   }
 
   // Flancos de los botones: "PadA" (cualquier mando) y "PadA@0" (mando número 0)
@@ -191,7 +232,7 @@ export class Input {
       if (lt > 0.05) brake = Math.max(brake, lt);
       if (p.buttons[1]?.pressed) brake = 1;
     }
-    const padCodes = who === 'solo' ? ['PadX', 'PadRB'] : ['PadX@' + slot, 'PadRB@' + slot];
+    const padCodes = who === 'solo' ? ['PadX', 'PadRB', 'PadLB'] : ['PadX@' + slot, 'PadRB@' + slot, 'PadLB@' + slot];
     const item = this.pressed(...map.item, ...padCodes, ...(isP1 ? ['TouchItem'] : []));
     const reset = this.pressed(...map.reset, who === 'solo' ? 'PadY' : 'PadY@' + slot);
     return { steer, throttle, brake, item, reset, analog }; // analog: la dirección viene del stick

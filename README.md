@@ -18,7 +18,7 @@ Controles:
 | R | Volver a la pista |
 | P / Esc | Pausa |
 | M | Silencio |
-| F | Ver los fps y la calidad gráfica |
+| F | Ver los fps, la calidad gráfica y los mandos |
 
 También funciona con botones táctiles en móvil o tableta, y con mando:
 
@@ -27,7 +27,7 @@ También funciona con botones táctiles en móvil o tableta, y con mando:
 | Stick o cruceta | Girar |
 | A o gatillo derecho | Acelerar |
 | B o gatillo izquierdo | Frenar y marcha atrás |
-| X o RB | Usar objeto |
+| X, RB o LB | Usar objeto |
 | Y | Volver a la pista |
 | Start | Pausa |
 
@@ -35,6 +35,11 @@ Todos los menús se manejan también con el mando o el teclado: stick, cruceta o
 (arriba y abajo cambian de fila; izquierda y derecha cambian el valor), A o Intro para elegir, B o Escape
 para volver y Start para empezar o reanudar. Si un mando se desconecta en plena carrera, el juego se pausa.
 El mando vibra con los golpes y las caídas si lo admite.
+
+Con mandos de Nintendo Switch (también los de cable de PDP, HORI o PowerA) el juego sigue las letras impresas
+en el mando: A acelera y acepta, B frena y vuelve, X usa el objeto e Y devuelve a la pista; ZR acelera, ZL
+frena, L y R usan el objeto y «+» es la pausa. La tecla F enseña, además de los fps, qué mandos ve el juego
+y qué botones se están pulsando.
 
 Para jugar en la tele: conecta el ordenador por HDMI y pulsa el botón de pantalla completa de la portada
 (también está en el menú de pausa). En una Xbox, abre la dirección del juego en el navegador Edge.

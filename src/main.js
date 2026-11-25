@@ -1305,7 +1305,7 @@ class Game {
     if (p.acc < 1.5) return;
     p.fps = p.n / p.acc;
     p.acc = 0; p.n = 0;
-    if (this.fpsEl) this.fpsEl.textContent = `${p.fps.toFixed(0)} fps · ${Math.round(p.scale * 100)}% · sombras ${['no', 'sí', 'suaves'][p.shadows]}`;
+    this.fpsText = `${p.fps.toFixed(0)} fps · ${Math.round(p.scale * 100)}% · sombras ${['no', 'sí', 'suaves'][p.shadows]}`;
     if (this.settings.quality !== 'auto' || !(this.state === 'race' || this.state === 'countdown' || this.state === 'title')) return;
     const q = this.qualityLevel();
     if (p.fps < 40) {
@@ -1353,6 +1353,7 @@ class Game {
     const inp = this.input;
     if (this.win2 && this.win2.closed) this.onWindow2Closed();
     inp.padEdges();
+    if (this.fpsEl) this.fpsEl.textContent = (this.fpsText || '…') + (inp.padList.length ? '\n' + inp.padDebug() : '');
     this.menuInput(dt);
     // campeonato: el aviso «Siguiente…» se dibuja antes de cargar el circuito
     if (this.state === 'cupnext' && --this.cupWait <= 0) this.cupLoad();
