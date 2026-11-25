@@ -525,3 +525,7 @@ body.two #cup-banner { top: 50%; transform: translate(-50%, -50%); }
   .podium-panel .big-btn { font-size: 20px; padding: 4px 14px; }
   .podium-panel .small-btn { font-size: 16px; padding: 3px 12px; }
 }
+
+/* ---------- Truco de la salida (portada) ---------- */
+.start-tip { font: 18px var(--display); letter-spacing: 1px; color: var(--yellow); text-align: center; text-shadow: 0 2px 0 var(--ink), 0 0 6px #000; }
+@media (max-width: 720px) { .start-tip { font-size: 15px; } }
