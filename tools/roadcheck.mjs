@@ -1,5 +1,7 @@
-// Comprueba, fotograma a fotograma, que bajo cada cámara se ve el camino y no la hierba
-// del suelo. Sin tarjeta gráfica (SwiftShader) el suelo gigante llegaba a taparlo.
+// Comprueba, fotograma a fotograma, que bajo cada cámara se ve el camino y no el suelo.
+// Sin tarjeta gráfica (SwiftShader) el suelo gigante llegaba a taparlo. Vale para todos los
+// circuitos: cada fotograma se vuelve a dibujar sin el suelo y, si los puntos del camino
+// cambian de color, es que el suelo los estaba tapando.
 // Uso: node tools/roadcheck.mjs [fotogramas=90] [circuito=clasico] [jugadores=2]
 import puppeteer from 'puppeteer-core';
 import { resolve, dirname } from 'node:path';
@@ -16,7 +18,7 @@ const browser = await puppeteer.launch({
 const page = await browser.newPage();
 await page.setViewport({ width: 1280, height: 720 });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
-await page.goto('file://' + resolve(root, 'index.html'));
+await page.goto('file://' + resolve(root, 'index.html'), { timeout: 180000 }); // la máquina puede ir cargada
 await page.waitForFunction(() => window.__mm, { timeout: 60000 });
 const r = await page.evaluate((frames, circuit, players) => {
   const g = window.__mm;
@@ -24,25 +26,40 @@ const r = await page.evaluate((frames, circuit, players) => {
   g.settings.mode = players; g.settings.laps = 1; g.settings.quality = 'baja'; g.applyQuality(true);
   g.autopilot = true; g.startRace(); g.countdown = 0.01;
   const gl = g.renderer.getContext();
-  const px = new Uint8Array(4);
+  let ground = null;
+  g.scene.traverse((o) => { if (o.isMesh && o.geometry.parameters && o.geometry.parameters.width === 5000) ground = o; });
+  if (!ground) throw new Error('no encuentro el suelo');
+  const FX = [0.3, 0.4, 0.6, 0.7];
+  // lee los puntos de muestra (abajo, en el centro de cada vista) del último dibujo
+  const sample = () => {
+    const W = gl.drawingBufferWidth, H = gl.drawingBufferHeight;
+    return g.views.map((v) => FX.map((fx) => {
+      const px = new Uint8Array(4);
+      const x = Math.floor((v.rect.x + fx * v.rect.w) * W);
+      const y = Math.floor((1 - v.rect.y - v.rect.h + 0.05 * v.rect.h) * H);
+      gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      return px;
+    }));
+  };
   const bad = [];
   let total = 0;
   for (let f = 0; f < frames; f++) {
     g.frame(0.05);
     if (f < 12) continue; // la cámara aún gira alrededor del camión tras la salida
-    const W = gl.drawingBufferWidth, H = gl.drawingBufferHeight;
+    const withGround = sample();
+    ground.visible = false;
+    g.render(0); // mismo fotograma, sin el suelo
+    ground.visible = true;
+    const without = sample();
     g.views.forEach((v, vi) => {
       const pl = v.player;
-      // solo cuenta si el camión va por el centro del camino y en el suelo: si no, ver hierba es normal
+      // solo cuenta si el camión va por el centro del camino y en el suelo: si no, ver el suelo es normal
       if (Math.abs(pl.d) > 6 || !pl.onGround || pl.state !== 'ok' || pl.surf !== 'road') return;
       let other = 0;
-      for (const fx of [0.3, 0.4, 0.6, 0.7]) {
-        const x = Math.floor((v.rect.x + fx * v.rect.w) * W);
-        const y = Math.floor((1 - v.rect.y - v.rect.h + 0.05 * v.rect.h) * H);
-        gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
-        // color del suelo de fuera de la pista en esa misma vista (esquina inferior no sirve: se compara con el verde/blanco dominante)
-        if (circuit === 'clasico' || circuit === 'selva') { if (px[1] > px[0] * 1.08) other++; }
-      }
+      withGround[vi].forEach((a, k) => {
+        const b = without[vi][k];
+        if (Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]), Math.abs(a[2] - b[2])) > 12) other++;
+      });
       total++;
       if (other >= 3) bad.push([f, vi, Math.round(pl.s), +pl.d.toFixed(1)]);
     });

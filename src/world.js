@@ -33,7 +33,7 @@ function buildingTex() {
       g.fillRect(x, y, 9, 10);
     }
   }
-  windowTex = new THREE.CanvasTexture(c);
+  windowTex = T.keepTexture(new THREE.CanvasTexture(c));
   windowTex.colorSpace = THREE.SRGBColorSpace;
   windowTex.wrapS = windowTex.wrapT = THREE.RepeatWrapping;
   return windowTex;
@@ -80,9 +80,13 @@ export function buildWorld(scene, track) {
   // suelo
   const gt = T.grassTex();
   gt.repeat.set(220, 220);
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(5000, 5000), new THREE.MeshStandardMaterial({ map: gt, roughness: 1 }));
+  // Sin tarjeta gráfica (SwiftShader) la profundidad de estos dos triángulos enormes sale mal
+  // y el suelo tapaba el camino: se dibuja justo después del cielo y sin escribir profundidad,
+  // así todo lo demás queda siempre encima.
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(5000, 5000), new THREE.MeshStandardMaterial({ map: gt, roughness: 1, depthWrite: false }));
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = -0.08;
+  ground.renderOrder = -0.5;
   ground.receiveShadow = true;
   scene.add(ground);
 
@@ -276,6 +280,7 @@ export function buildWorld(scene, track) {
 
   // rocas
   const rockGeo = new THREE.DodecahedronGeometry(1.6, 0);
+  const rockPos = rockGeo.attributes.position, rockV = new THREE.Vector3();
   const nRocks = TH.rocks === null ? 0 : TH.trees === 'dead' ? 360 : 160;
   const rocks = new THREE.InstancedMesh(rockGeo, new THREE.MeshStandardMaterial({ color: TH.rocks ?? 0x8a847a, flatShading: true, roughness: 1 }), nRocks);
   for (let i = 0; i < nRocks; i++) {
@@ -283,7 +288,11 @@ export function buildWorld(scene, track) {
     do { x = cx + (r() - 0.5) * 1100; z = cz + (r() - 0.5) * 1000; } while (distTrack(x, z) < LIMIT + 6 || nearTunnel(x, z));
     const s = 0.5 + r() * 1.6;
     q.setFromEuler(new THREE.Euler(r() * 3, r() * 3, r() * 3));
-    m4.compose(new THREE.Vector3(x, s * 0.4, z), q, new THREE.Vector3(s, s * 0.7, s));
+    m4.compose(new THREE.Vector3(x, 0, z), q, new THREE.Vector3(s, s * 0.7, s));
+    // apoyada en el suelo: el suelo ya no escribe profundidad y no taparía la parte enterrada
+    let low = Infinity;
+    for (let k = 0; k < rockPos.count; k++) low = Math.min(low, rockV.fromBufferAttribute(rockPos, k).applyMatrix4(m4).y);
+    m4.elements[13] = -0.08 - low;
     rocks.setMatrixAt(i, m4);
   }
   rocks.castShadow = true;

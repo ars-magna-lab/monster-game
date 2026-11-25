@@ -72,6 +72,7 @@ export class Particles {
   emit(o) {
     const i = this.next;
     this.next = (this.next + 1) % this.max;
+    if (this.life[i] <= 0) this.alive++;
     const i3 = i * 3;
     this.pos[i3] = o.x; this.pos[i3 + 1] = o.y; this.pos[i3 + 2] = o.z;
     this.vel[i3] = o.vx || 0; this.vel[i3 + 1] = o.vy || 0; this.vel[i3 + 2] = o.vz || 0;
@@ -88,10 +89,16 @@ export class Particles {
   }
 
   update(dt) {
+    // sin partículas vivas no hay nada que mover ni que volver a subir a la GPU
+    // (la última subida ya las dejó todas transparentes)
+    if (this.alive === 0) { this.points.visible = false; return; }
+    this.points.visible = true;
     const { pos, vel, life, maxLife, size, size0, grow, alpha, alpha0, grav, drag } = this;
+    let alive = 0;
     for (let i = 0; i < this.max; i++) {
       if (life[i] <= 0) { if (alpha[i] !== 0) { alpha[i] = 0; size[i] = 0; } continue; }
       life[i] -= dt;
+      if (life[i] > 0) alive++;
       const i3 = i * 3;
       const k = Math.exp(-drag[i] * dt);
       vel[i3] *= k; vel[i3 + 2] *= k;
@@ -100,7 +107,10 @@ export class Particles {
       const t = Math.max(0, life[i] / maxLife[i]);
       size[i] = size0[i] + grow[i] * (1 - t);
       alpha[i] = alpha0[i] * Math.min(1, t * 2.5);
+      // bajo el suelo no se ven (el suelo ya no escribe profundidad y no las tapa)
+      if (pos[i3 + 1] < -0.1) alpha[i] = 0;
     }
+    this.alive = alive;
     for (const n of ['position', 'pcolor', 'psize', 'palpha']) this.geo.attributes[n].needsUpdate = true;
   }
 }
