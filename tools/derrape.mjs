@@ -204,7 +204,7 @@ const lapRun = (drift) => ev((drift) => {
   let hold = false, side = 0, out = 0, drifts = 0, boosts = [0, 0, 0, 0], driftT = 0;
   drv.control = (dt, game) => {
     const c = orig(dt, game);
-    if (!drift) return c;
+    if (!drift) return { ...c, drift: false };
     // derrapa en las curvas cerradas y suelta cuando la curva se acaba o pide girar al otro lado
     if (!hold) { if (Math.abs(c.steer) > 0.5 && p.vF > p.maxSpeed * 0.6) { hold = true; side = Math.sign(c.steer); out = 0; } }
     else { out = c.steer * side < -0.3 ? out + dt : 0; if (out > 0.1) hold = false; }
@@ -244,6 +244,31 @@ r.vueltas = runs;
   const z = r.resumen;
   check.curvas = z.rocesCon <= z.rocesSin * 1.15 + 2 && z.caidasCon <= z.caidasSin + 1;
 }
+
+// 8: la IA derrapa sola (sin guion) en las curvas de clasico: cobra turbos y no acaba en la barrera
+r.ia = await ev(() => {
+  const g = window.__mm;
+  window.__keep = 0;
+  window.__race();
+  const p = g.player;
+  g.autopilot = true; // la IA conduce el camión del jugador (habilidad de difícil)
+  let starts = 0, boosts = [0, 0, 0, 0], scrapeDrift = 0, scrape = 0, falls = 0, t = 0, maxIn = 0;
+  while (p.lap < 3 && t < 200) {
+    g.step(1 / 120, []);
+    t += 1 / 120;
+    if (p.drift) maxIn = Math.max(maxIn, p.d * p.drift.side < 0 ? Math.abs(p.d) : 0);
+    for (const e of p.events) {
+      if (e.type === 'driftStart') starts++;
+      else if (e.type === 'driftBoost') boosts[e.level]++;
+      else if (e.type === 'scrape') { scrape++; if (p.drift) scrapeDrift++; }
+      else if (e.type === 'fallPit' || e.type === 'fallWater') falls++;
+    }
+    p.events.length = 0;
+  }
+  g.autopilot = false;
+  return { vueltas: p.lap - 1, derrapes: starts, turbos: boosts.slice(1).join('/'), roces: scrape, rocesDerrapando: scrapeDrift, caidas: falls, maxFuera: +maxIn.toFixed(1) };
+});
+check.ia = r.ia.vueltas >= 2 && r.ia.derrapes >= 4 && r.ia.turbos.split('/').reduce((a, b) => a + +b, 0) >= 3 && r.ia.rocesDerrapando === 0 && r.ia.caidas === 0;
 
 console.log(JSON.stringify(r, null, 1));
 console.log(JSON.stringify(check));
