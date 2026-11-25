@@ -1834,6 +1834,17 @@ class Game {
   }
 
   // Dónde quiere ir la cámara de persecución (la salida la usa para acabar justo ahí)
+  // 0..1: cuánto sube la cámara de p para enseñarle la copa que le espera en la meta (los últimos
+  // 190 m de su última vuelta)
+  cupReveal(p) {
+    if (this.state !== 'race' || p.finished || p.lap !== this.laps || !this.cups.cups.some((c) => c.state === 'waiting')) return 0;
+    // dentro de un túnel no sube (la cámara, que va unos metros por detrás, atravesaría el techo)
+    if ((this.track.tunnels || []).some((t) => p.s > t.s0 - 5 && p.s < t.s1 + 16)) return 0;
+    const left = this.track.length - this.track.ahead(0, p.s); // metros hasta la meta
+    const k = clamp((190 - left) / 60, 0, 1);
+    return k * k * (3 - 2 * k);
+  }
+
   chaseTarget(view, p) {
     const cam = view.camera;
     const portrait = cam.aspect < 1;
@@ -1849,6 +1860,9 @@ class Game {
     const g = this.track.surfaceAt(q.s, clamp(q.d, -LIMIT, LIMIT));
     const gh = g.type === 'pit' || g.type === 'water' ? g.top : g.h;
     want.y = Math.max(want.y, gh + 2.2);
+    // última recta con una copa esperando en la meta: la cámara sube para que la copa, que está
+    // a la altura de los camiones, se vea por encima del propio camión
+    want.y += 4 * this.cupReveal(p) * big;
     const look = new THREE.Vector3(p.x + Math.cos(view.camYaw) * 5, p.y + 2.4, p.z + Math.sin(view.camYaw) * 5);
     const fov = (portrait ? 78 : wide ? 58 : 68) + clamp(sp / p.maxSpeed, 0, 1.3) * 8 + (p.boost > 0 ? 7 : 0);
     return { want, look, fov };

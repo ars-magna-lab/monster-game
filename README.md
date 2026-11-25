@@ -128,9 +128,10 @@ terminan el campeonato. Se guardan las copas ganadas y la mejor puntuación. Val
   Los camiones grandes también chafan a los pequeños si los embisten de frente y bastante más rápido: el Mamut
   a casi todos, el Megalodón y el Dragón al Escorpión y al Relámpago, y la Trituradora al Relámpago. El chafado
   se queda aplastado y parado un momento, y después no lo pueden volver a chafar durante unos segundos.
-- **La copa en la meta**: cuando el primero lleva media última vuelta, aparece una copa dorada sobre la meta. El
-  primero que cruza se la lleva y la levanta; después esperan la de plata y la de bronce para el segundo y el
-  tercero.
+- **La copa en la meta**: cuando el primero lleva media última vuelta, aparece una copa dorada de pie sobre la
+  línea de meta (la cámara sube en la última recta para que se vea). El primero que cruza la engancha con la
+  rueda delantera y la levanta haciendo caballitos; después esperan la de plata y la de bronce para el segundo
+  y el tercero.
 - Récords guardados en el navegador.
 
 ## Desarrollo
