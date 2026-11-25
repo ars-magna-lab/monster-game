@@ -347,3 +347,31 @@ body.screen2 #screen2-wait h2 { font: 54px var(--display); color: #3ca0ff; margi
 .opt-circuit { flex-wrap: wrap; }
 .circuit-opts { display: inline-flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
 .circuit-desc { margin: 2px 0 8px; font-size: 13px; opacity: .85; text-align: center; min-height: 1.2em; }
+
+/* ---------- Foco de mando y teclado (se ve a varios metros de la tele) ---------- */
+@keyframes focusGlow { 50% { box-shadow: 0 0 0 4px var(--ink), 0 0 30px 12px rgba(255, 204, 0, .8); } }
+body.nav-on button.focus {
+  outline: 5px solid #fff; outline-offset: 4px;
+  box-shadow: 0 0 0 4px var(--ink), 0 0 18px 6px rgba(255, 204, 0, .55);
+  animation: focusGlow 1s ease-in-out infinite;
+  transform: scale(1.08);
+}
+body.nav-on .small-btn.focus { background: var(--yellow); color: var(--ink); }
+body.nav-on .opt.focus {
+  outline: 4px solid var(--yellow); outline-offset: 5px; border-radius: 10px;
+  background: rgba(255, 204, 0, .16); box-shadow: 0 0 22px 4px rgba(255, 204, 0, .35);
+}
+body.nav-on .opt.focus > span:first-child { color: var(--yellow); }
+body.nav-on .opt.focus > span:first-child::before { content: '◀ '; }
+body.nav-on .opt.focus > span:first-child::after { content: ' ▶'; }
+body.nav-on #truck-name.focus { text-decoration: underline 5px var(--yellow); text-underline-offset: 8px; }
+.round.on { background: #fff; }
+
+/* Controles del mando en la portada */
+.pad-controls { align-items: center; }
+.pad-controls > b { font: 18px var(--display); letter-spacing: 2px; color: var(--yellow); }
+kbd.pad-a, kbd.pad-b, kbd.pad-x, kbd.pad-y { min-width: 22px; border-radius: 50%; color: #fff; border-bottom-color: rgba(0,0,0,.45); }
+kbd.pad-a { background: #2fa84f; }
+kbd.pad-b { background: #d7261e; }
+kbd.pad-x { background: #2b6fd6; }
+kbd.pad-y { background: #e8b400; color: var(--ink); }
