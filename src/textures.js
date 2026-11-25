@@ -38,7 +38,12 @@ function speckle(g, w, h, n, colors, rmin, rmax, r) {
 }
 
 const cache = {};
-const once = (k, f) => cache[k] || (cache[k] = f());
+// Texturas compartidas entre escenas (la caché de aquí y alguna otra guardada en su módulo):
+// no se liberan al cambiar de circuito. Sus copias (clone) no cuentan como compartidas.
+const sharedTex = new WeakSet();
+export function keepTexture(t) { sharedTex.add(t); return t; }
+export const isSharedTexture = (t) => sharedTex.has(t);
+const once = (k, f) => cache[k] || (cache[k] = keepTexture(f()));
 
 // Colores del circuito actual (los pone setTexTheme). Las texturas del terreno
 // se guardan por circuito para no repetir el trabajo al volver a uno.

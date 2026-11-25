@@ -16,7 +16,7 @@ import { HUD, fmtTime } from './hud.js';
 import { setAnisotropy, checkerTex, softDotTex, setTexTheme } from './textures.js';
 import { CIRCUITS, circuitById, pitText } from './circuits.js';
 import { renderSong } from './music.js';
-import { setCheapMaterials } from './optimize.js';
+import { setCheapMaterials, disposeScene } from './optimize.js';
 
 const STEP = 1 / 120;
 const DIFF = {
@@ -169,15 +169,17 @@ class Game {
     this.circuit = c;
     if (this.scene) {
       this.projectiles.clear();
-      this.scene.traverse((o) => {
-        if (o.geometry && !o.userData.keep) o.geometry.dispose();
-      });
+      // lo que se reutiliza en el circuito nuevo sale antes de liberar la escena vieja:
+      // los camiones y los proyectiles (sus geometrías y materiales son compartidos)
       for (const v of this.vehicles) this.scene.remove(v.mesh);
+      for (const list of Object.values(this.projectiles.pool)) for (const m of list) this.scene.remove(m);
+      disposeScene(this.scene);
     }
     setTexTheme(c.theme.tex);
     const scene = (this.scene = new THREE.Scene());
     scene.environment = this.envMap;
-    scene.environmentIntensity = c.theme.volcano ? 0.3 : 0.45;
+    // intensidad base del entorno en este circuito (el túnel la atenúa a partir de ella)
+    this.envBase = scene.environmentIntensity = c.theme.volcano ? 0.3 : 0.45;
     this.track = new Track(c);
     this.trackMeshes = buildTrackMeshes(this.track, scene);
     this.world = buildWorld(scene, this.track);
@@ -1147,7 +1149,7 @@ class Game {
     const w = this.world;
     w.hemi.intensity = w.baseHemi * (1 - 0.72 * k);
     w.sun.intensity = w.baseSun * (1 - 0.97 * k);
-    this.scene.environmentIntensity = 0.45 * (1 - 0.7 * k);
+    this.scene.environmentIntensity = this.envBase * (1 - 0.7 * k);
     const fx = Math.cos(p.th), fz = Math.sin(p.th);
     this.headlight.intensity = 260 * k;
     this.headlight.position.set(p.x + fx * 2.5, p.y + 2.6, p.z + fz * 2.5);
@@ -1157,6 +1159,16 @@ class Game {
     this.tunnelLight.intensity = k * (150 + 90 * lampPhase);
     this.tunnelLight.position.set(p.x + fx * 6, tr.baseAt(p.s) + 15, p.z + fz * 6);
     w.focus(p.mesh.position);
+  }
+
+  // Luces sin el efecto del túnel (portada): por si se salió al menú desde dentro del túnel
+  resetLights() {
+    const w = this.world;
+    w.hemi.intensity = w.baseHemi;
+    w.sun.intensity = w.baseSun;
+    this.scene.environmentIntensity = this.envBase;
+    this.headlight.intensity = 0;
+    this.tunnelLight.intensity = 0;
   }
 
   updateTitleCamera() {
@@ -1258,6 +1270,7 @@ class Game {
       return;
     }
     if (this.state === 'title' || !this.views.length) {
+      this.resetLights();
       this.world.focus(this.track.pointAt(this.track.length - 20));
       r.setScissorTest(false);
       r.setViewport(0, 0, window.innerWidth, window.innerHeight);

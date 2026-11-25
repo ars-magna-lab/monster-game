@@ -7,7 +7,9 @@
     "start": "node tools/serve.mjs",
     "build": "esbuild src/main.js --bundle --minify --format=iife --target=es2020 --outfile=dist/game.js",
     "dev": "esbuild src/main.js --bundle --format=iife --target=es2020 --sourcemap --outfile=dist/game.js --watch",
-    "test": "node tools/smoke.mjs"
+    "test": "node tools/smoke.mjs",
+    "test:pista": "node tools/roadcheck.mjs 90 clasico 2 && node tools/roadcheck.mjs 90 nieve 2 && node tools/roadcheck.mjs 90 clasico 1",
+    "test:memoria": "node tools/memcheck.mjs 3"
   },
   "dependencies": {
     "three": "^0.170.0"

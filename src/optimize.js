@@ -1,6 +1,7 @@
 // Optimizaciones de geometría para que el juego vaya mejor en equipos lentos.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { isSharedTexture } from './textures.js';
 
 // Parte una malla grande en trozos por zonas del mapa, para que la cámara
 // solo dibuje los trozos que tiene delante.
@@ -124,4 +125,29 @@ export function setCheapMaterials(root, on) {
       delete o.userData.richMaterial;
     }
   });
+}
+
+// Libera en la GPU todo lo propio de una escena que ya no se va a usar: geometrías,
+// materiales (también los baratos y los originales guardados), texturas exclusivas
+// (no las compartidas de la caché) y los mapas de sombras. Antes hay que sacar de la
+// escena lo que se reutiliza en otra (camiones, proyectiles...).
+export function disposeScene(scene) {
+  const geos = new Set(), mats = new Set(), texs = new Set();
+  const addMat = (m) => {
+    if (!m) return;
+    if (Array.isArray(m)) { m.forEach(addMat); return; }
+    mats.add(m);
+    for (const v of Object.values(m)) if (v && v.isTexture) texs.add(v);
+    if (m.uniforms) for (const u of Object.values(m.uniforms)) if (u && u.value && u.value.isTexture) texs.add(u.value);
+  };
+  scene.traverse((o) => {
+    if (o.geometry) geos.add(o.geometry);
+    addMat(o.material);
+    addMat(o.userData.richMaterial);
+    if (o.isInstancedMesh) o.dispose();
+    if (o.isLight && o.shadow) o.shadow.dispose();
+  });
+  for (const g of geos) g.dispose();
+  for (const m of mats) m.dispose();
+  for (const t of texs) if (t !== scene.environment && !isSharedTexture(t)) t.dispose();
 }
