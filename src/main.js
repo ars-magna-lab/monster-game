@@ -18,6 +18,7 @@ import { setAnisotropy, checkerTex, softDotTex, setTexTheme } from './textures.j
 import { CIRCUITS, circuitById, pitText } from './circuits.js';
 import { renderSong } from './music.js';
 import { setCheapMaterials, disposeScene, cheapTextureFilter } from './optimize.js';
+import { FinishCups } from './meta.js';
 import { newCup, addRace, standings, buildPodium } from './copa.js';
 
 const STEP = 1 / 120;
@@ -225,6 +226,7 @@ class Game {
     this.fx = new FX(scene);
     this.fx.dustColor = c.theme.dust;
     this.obstacles = new Obstacles(this.track, scene, this);
+    this.cups = new FinishCups(this.track, scene, this); // las copas de la meta
     this.projectiles = new Projectiles(scene, this);
     for (const v of this.vehicles) { v.track = this.track; scene.add(v.mesh); }
     // sombra redonda bajo cada camión (cuando las sombras de verdad están apagadas)
@@ -494,6 +496,7 @@ class Game {
     this.sound.init();
     this.sound.musicStart(false);
     this.state = 'select';
+    this.cups?.reset();
     this.showScreen('select');
     this.refreshOptions();
     this.updateSelect();
@@ -701,6 +704,7 @@ class Game {
     this.raceTime = 0;
     this.countdown = START.total;
     this.finishCount = 0;
+    this.cups?.reset();
     this.resultsT = 0;
     this.allDoneT = null;
     for (const l of this.trackMeshes.lights) l.material.color.setHex(0x331111);
@@ -843,6 +847,7 @@ class Game {
       v.finished = true;
       v.finishTime = this.raceTime;
       v.finishPlace = ++this.finishCount;
+      this.cups.award(v); // oro, plata o bronce, si queda
       if (v.isPlayer) this.playerFinished(v);
       return;
     }
@@ -855,7 +860,10 @@ class Game {
 
   playerFinished(p) {
     const view = this.viewOf(p);
-    view.hud.big(p.finishPlace === 1 ? '¡GANASTE!' : `¡${ORDINAL[p.finishPlace - 1]}!`, 3, 'small');
+    // con copa (los tres primeros), el texto va arriba y dura menos: así se ve el camión con la
+    // copa en alto, y después sale «¡LA COPA ES TUYA!» (meta.js)
+    const cup = p.finishPlace <= 3;
+    view.hud.big(p.finishPlace === 1 ? '¡GANASTE!' : `¡${ORDINAL[p.finishPlace - 1]}!`, cup ? 1.6 : 3, cup ? 'small top' : 'small');
     this.sound.play('finish');
     this.fx.confetti(p.x, p.y, p.z, 160);
     const key = this.recordKey(p.def.id, this.laps);
@@ -1115,6 +1123,7 @@ class Game {
     for (const c of ctrls) c.item = false;
     this.collide();
     this.obstacles.update(dt, this.vehicles);
+    this.cups.update(dt, this.vehicles);
     this.projectiles.update(dt);
     for (const v of this.vehicles) {
       if (v.state !== 'ok') continue;
@@ -1770,10 +1779,13 @@ class Game {
         view.camPos.set(p.x + fx * along - fz * lat, h0 + (ch.want.y - h0) * e, p.z + fz * along + fx * lat);
         view.camLook.set(p.x, p.y + 1.8 * big, p.z).lerp(ch.look, e);
       }
-    } else if (p.finished && (st === 'race' || this.resultsT < 2.2)) {
+    } else if (p.finished && (st === 'race' || this.resultsT < 2.2) && !this.cups.ceremony(p)) {
       const a = this.time * 0.25 + view.idx * Math.PI;
+      // con una copa encima, la cámara mira por encima del camión: así el camión y la copa quedan
+      // en la parte de abajo de la pantalla y no los tapa el «¡GANASTE!» del centro
+      const cup = this.cups.heldBy(p);
       view.camPos.lerp(new THREE.Vector3(p.x + Math.cos(a) * 16, p.y + 7, p.z + Math.sin(a) * 16), 1 - Math.exp(-dt * 2));
-      view.camLook.set(p.x, p.y + 2, p.z);
+      view.camLook.set(p.x, p.y + (cup ? 5 : 2), p.z);
     } else {
       if (p.state !== 'fallen') {
         const moving = Math.abs(p.vF) > 1;
@@ -1786,6 +1798,9 @@ class Game {
       view.camPos.z += (want.z - view.camPos.z) * kxz;
       view.camPos.y += (want.y - view.camPos.y) * ky;
       view.camLook.copy(ch.look);
+      // levantando la copa: la cámara de carrera, algo más alta y mirando por encima del camión
+      // (el camión y la copa quedan enteros en el centro, bajo los textos)
+      if (p.finished && this.cups.ceremony(p)) { view.camPos.y += (p.y + 6.5 * p.size - view.camPos.y) * ky; view.camLook.y += 2.2 * p.size; }
       fovTarget = ch.fov;
     }
     view.fov += (fovTarget - view.fov) * Math.min(1, dt * 3);

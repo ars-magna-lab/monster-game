@@ -164,6 +164,19 @@ export class Sound {
         this.osc('square', 150, 70, 0.95, 0.05 * v, 0.04);
         this.noiseBurst(0.9, 0.2 * v, 'bandpass', 1100, 350, 2);
         break;
+      // ---- copas de la meta (volúmenes prudentes) ----
+      case 'cupAppear': // destello: brillo que sube
+        [1568, 2093, 2637].forEach((f, i) => this.osc('triangle', f, f * 1.02, 0.18, 0.1 * v, i * 0.07));
+        this.noiseBurst(0.4, 0.08 * v, 'highpass', 5000, 7000, 1);
+        break;
+      case 'trophy': // fanfarria corta de la copa dorada
+        [523, 659, 784, 1046].forEach((f, i) => this.osc('square', f, f, 0.14, 0.12 * v, i * 0.12));
+        [784, 1046].forEach((f) => this.osc('triangle', f, f, 0.8, 0.12 * v, 0.5));
+        this.osc('square', 1318, 1318, 0.8, 0.07 * v, 0.5);
+        break;
+      case 'trophySmall': // dos notas para la plata y el bronce
+        [659, 988].forEach((f, i) => this.osc('triangle', f, f, i ? 0.35 : 0.14, 0.14 * v, i * 0.13));
+        break;
       case 'cannon': // cañonazo lejano: golpe seco y retumbo
         this.noiseBurst(0.9, 0.55 * v, 'lowpass', 700, 50);
         this.osc('sine', 70, 28, 0.7, 0.55 * v);

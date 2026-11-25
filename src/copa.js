@@ -1,5 +1,6 @@
 // Modo campeonato: los siete circuitos seguidos, puntos por carrera y podio final.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 // orden de los circuitos de la copa
 export const COPA = ['clasico', 'playa', 'selva', 'dinos', 'nieve', 'ciudad', 'volcan'];
@@ -28,6 +29,27 @@ export function standings(cup) {
   return Object.entries(cup.table)
     .map(([id, e]) => ({ id, ...e }))
     .sort((a, b) => b.pts - a.pts || b.wins - a.wins || a.last - b.last);
+}
+
+// Copa de trofeo (unos 3 m de alto, el pie en y = 0): peana, pie, nudo, cuenco y dos asas.
+// Una sola geometría para las tres copas de la meta (oro, plata y bronce).
+export function buildCupGeometry() {
+  const prof = [
+    [0, 0], [0.95, 0], [0.95, 0.18], [0.8, 0.3], [0.8, 0.42], [0.32, 0.5], [0.2, 0.75], [0.18, 1.05],
+    [0.34, 1.2], [0.2, 1.36], [0.3, 1.5], [0.7, 1.68], [1.0, 2.0], [1.15, 2.45], [1.22, 2.95], [1.32, 3.02], [1.1, 3.0], [0.98, 2.6], [0, 2.4],
+  ].map(([r, y]) => new THREE.Vector2(r, y));
+  const body = new THREE.LatheGeometry(prof, 16);
+  const parts = [body];
+  for (const sx of [-1, 1]) {
+    const h = new THREE.TorusGeometry(0.48, 0.1, 6, 12, Math.PI * 1.15);
+    h.rotateZ(sx > 0 ? -Math.PI * 0.58 : Math.PI * 0.42);
+    h.translate(sx * 1.12, 2.35, 0);
+    parts.push(h);
+  }
+  const merged = mergeGeometries(parts.map((g) => (g.index ? g.toNonIndexed() : g)));
+  parts.forEach((g) => g.dispose());
+  merged.computeVertexNormals();
+  return merged;
 }
 
 // Podio de tres alturas para la sala de exposición: devuelve el grupo y dónde va cada camión

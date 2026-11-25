@@ -209,6 +209,9 @@ kbd {
 }
 .hud .h-msg.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 .hud .h-msg.warn { color: var(--yellow); font-size: 64px; }
+.hud .h-msg.gold { color: #ffc81e; font-size: 64px; top: 16%; }
+.hud .h-big.top { top: 16%; }
+.hud .h-big.small.top { font-size: 80px; }
 .hud .h-big {
   position: absolute; left: 50%; top: 45%; transform: translate(-50%, -50%); opacity: 0;
   font-size: 200px; color: var(--yellow); white-space: nowrap;
@@ -254,9 +257,10 @@ kbd {
 .hud.compact .h-speed small { font-size: 16px; }
 .hud.compact .boost-bar { width: 110px; }
 .hud.compact .h-msg { font-size: 34px; }
-.hud.compact .h-msg.warn { font-size: 40px; }
+.hud.compact .h-msg.warn, .hud.compact .h-msg.gold { font-size: 40px; }
 .hud.compact .h-big { font-size: 120px; }
 .hud.compact .h-big.small { font-size: 54px; }
+.hud.compact .h-big.small.top { font-size: 44px; }
 .hud.compact .h-hint { font-size: 22px; bottom: 30%; }
 .hud.compact .h-tag { font-size: 20px; bottom: 8px; }
 
