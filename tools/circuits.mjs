@@ -33,7 +33,7 @@ await p.evaluate(() => {
     if (truck !== null && truck !== undefined) g.settings.truck = +truck;
     g.settings.laps = laps; g.autopilot = true; g.startRace(); g.countdown = 0.01;
     const KINDS = ['log', 'ball', 'boom', 'net', 'fallPit', 'fallWater', 'tired', 'barreled', 'rocketed', 'waved', 'meteor', 'car',
-      'ola', 'leg', 'scrape', 'wall', 'driftBoost', 'crushTruck', 'crushed', 'giant'];
+      'ola', 'leg', 'bite', 'scrape', 'wall', 'driftBoost', 'crushTruck', 'crushed', 'giant'];
     // chafar, según cómo: gigante, cayendo encima o por tamaño
     for (const h of ['giant', 'fall', 'size']) KINDS.push('crushTruck:' + h, 'crushed:' + h);
     const per = new Map(g.vehicles.map((v) => [v, { stuck: 0, wrong: 0, ...Object.fromEntries(KINDS.map((k) => [k, 0])) }]));
@@ -95,7 +95,7 @@ if (!medir) {
     const r = await p.evaluate(runRace, { id, laps, diff: diffs[0], truck });
     const ai = r.trucks.filter((t) => t.ai);
     const sum = (k) => ai.reduce((a, t) => a + t.c[k], 0);
-    const out = { id, L: r.L, res: r.trucks.map((t) => (t.finished ? t.time : 'NO ' + t.s)), ia: Object.fromEntries(['log', 'ball', 'boom', 'net', 'fallPit', 'fallWater', 'meteor', 'car', 'ola', 'leg', 'stuck', 'wrong'].map((k) => [k, sum(k)])) };
+    const out = { id, L: r.L, res: r.trucks.map((t) => (t.finished ? t.time : 'NO ' + t.s)), ia: Object.fromEntries(['log', 'ball', 'boom', 'net', 'fallPit', 'fallWater', 'meteor', 'car', 'ola', 'leg', 'bite', 'stuck', 'wrong'].map((k) => [k, sum(k)])) };
     await p.evaluate(() => { const g = window.__mm; g.startRace(); g.countdown = 0.01; g.simulate(9); });
     await new Promise((res) => setTimeout(res, 7000));
     await p.screenshot({ path: `shots/40-${id}.png` });
@@ -115,7 +115,7 @@ if (!medir) {
   const f = (x) => x.toFixed(2);
   // tabla 1: lo que le pasa a la IA, por camión y vuelta
   // scrape: roce fuerte con la barrera; wall: choque con un borde de foso o de rampa
-  const COLS = ['log', 'ball', 'boom', 'net', 'fallPit', 'fallWater', 'meteor', 'car', 'ola', 'leg', 'stuck', 'wrong', 'scrape', 'wall'];
+  const COLS = ['log', 'ball', 'boom', 'net', 'fallPit', 'fallWater', 'meteor', 'car', 'ola', 'leg', 'bite', 'stuck', 'wrong', 'scrape', 'wall'];
   console.log('\n## IA: sucesos por camión y vuelta (vuelta media en s)');
   console.log(['dif', 'circuito', 'n', ...COLS, 'vuelta', 'sin acabar'].join('\t'));
   for (const diff of diffs) {

@@ -326,7 +326,7 @@ export const CIRCUITS = [
     // Fluido y prehistórico: curvas largas para derrapar, una zona revirada entre rocas,
     // dos estampidas de tricerátops, un saurópodo plantado en la pista y un túnel de costillas
     id: 'dinos', name: 'Cañón Jurásico', short: 'Dinos',
-    desc: 'Un cañón prehistórico: estampidas de tricerátops, un saurópodo gigante entre cuyas patas hay que pasar, alquitrán y un túnel de costillas.',
+    desc: 'Un cañón prehistórico: estampidas de tricerátops, un saurópodo gigante entre cuyas patas hay que pasar, dos tiranosaurios que muerden medio camino, alquitrán y un túnel de costillas.',
     //        0       1            2       3            4           5            6           7            8                    9            10                   11
     layout: [S(250), A(90, 120), S(190), A(-60, 100), A(70, 50), A(-70, 50), A(70, 50), A(80, 110), S(0, { solve: 'X' }), A(90, 120), S(0, { solve: 'Y' }), A(90, 100)],
     features: (at, L) => ({
@@ -346,6 +346,9 @@ export const CIRCUITS = [
       ],
       // el gran saurópodo: cuatro patas como columnas en la pista (se pasa entre ellas)
       legs: [{ s: at(8, 90), sign: at(8, 40) }],
+      // dos tiranosaurios por fuera de la barrera, uno a cada lado: muerden la mitad de su lado
+      // (primero el izquierdo y 70 m después el derecho: hay que hacer un quiebro)
+      rex: [{ s: at(8, 142), side: -1, sign: at(8, 112) }, { s: at(8, 212), side: 1 }],
     }),
     places: {
       turbos: [[0, 40, -6], [0, 40, 6], [1, 120, 0], [2, 20, -5], [2, 20, 5], [8, 180, 0], [9, 150, 0], [10, 240, -6], [10, 240, 6], [11, 120, 0]],

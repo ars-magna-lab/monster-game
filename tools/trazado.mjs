@@ -124,6 +124,10 @@ for (const c of list) {
     add('zona', g.s - 9, g.s + 9, 'saurópodo');
     if (g.sign !== undefined) add('cartel', g.sign, g.sign, 'cartel saurópodo', { of: g.s - 9 });
   }
+  for (const R of t.rex || []) {
+    add('zona', R.s - 8, R.s + 8, `tiranosaurio ${R.side < 0 ? 'izq.' : 'dcha.'}`);
+    if (R.sign !== undefined) add('cartel', R.sign, R.sign, 'cartel tiranosaurio', { of: R.s - 8 });
+  }
   for (const RO of PL.rollers) {
     const ss = RO.list.map(([rel]) => A(RO.seg, rel));
     add('rodillos', Math.min(...ss) - 6, Math.max(...ss) + 6, `rodillos ×${ss.length}`);

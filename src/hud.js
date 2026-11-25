@@ -158,6 +158,13 @@ export class HUD {
       g.beginPath(); g.arc(lx, ly, 5.5, 0, Math.PI * 2);
       g.fillStyle = '#7fbf3f'; g.fill(); g.strokeStyle = 'rgba(0,0,0,0.7)'; g.lineWidth = 2; g.stroke();
     }
+    // tiranosaurios: triángulo naranja por su lado de la pista
+    for (const R of tr.rex || []) {
+      const P = tr.pointAt(R.s, R.side * 13);
+      const [rx, ry] = this.toMap(P.x, P.z);
+      g.beginPath(); g.moveTo(rx, ry - 7); g.lineTo(rx + 6.5, ry + 5); g.lineTo(rx - 6.5, ry + 5); g.closePath();
+      g.fillStyle = '#ff7a2a'; g.fill(); g.strokeStyle = 'rgba(0,0,0,0.75)'; g.lineWidth = 2; g.stroke();
+    }
     const st = tr.pointAt(0);
     const [sx, sy] = this.toMap(st.x, st.z);
     g.fillStyle = '#fff';

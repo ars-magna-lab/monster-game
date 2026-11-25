@@ -6,6 +6,8 @@ import { DRIFT } from './vehicle.js';
 const rand = (a, b) => a + Math.random() * (b - a);
 // huecos entre las patas del saurópodo (patas en d = -6,5 y +5,5; ver obstacles.js)
 const LEG_GAPS = [-0.5, 9.9];
+// parte de las pasadas en que se aparta del tiranosaurio (según la habilidad)
+const REX_DODGE = (skill) => Math.min(0.9, 0.1 + 0.25 * skill);
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
 // Derrape de la IA. Según la habilidad (fácil 0,7, normal 1, difícil 1,5): en qué parte de las
@@ -67,6 +69,8 @@ export class AIDriver {
     // olas y patas del saurópodo (Bahía Pirata y Cañón Jurásico)
     for (const w of tr.waves) { if (rel(w.s1) > -2 && rel(w.s0) < dist + 20) return true; }
     for (const L of tr.legs) { const d = rel(L.s); if (d > -6 && d < dist + 20) return true; }
+    // tiranosaurios (Cañón Jurásico): nada de derrapar hacia su mordisco
+    for (const R of tr.rex) { const d = rel(R.s); if (d > -8 && d < dist + 20) return true; }
     const R = ob.rain;
     if (R && R.active.length && tr.ahead(R.s0 - dist - 20, v.s) < R.s1 - R.s0 + dist + 20) return true;
     for (const p of game.projectiles.list) {
@@ -146,7 +150,10 @@ export class AIDriver {
       if (!lanes) continue;
       const before = tr.ahead(s, p.s0);
       const after = tr.ahead(p.s1, s);
-      if (before < 110 || after < 6) {
+      // también encima del foso: antes, al mirar a un punto ya dentro del foso, el carril del
+      // puente se olvidaba y el camión volvía a su carril de siempre (y se salía del puente)
+      const inside = tr.ahead(p.s0, s) < p.s1 - p.s0;
+      if (before < 110 || inside || after < 6) {
         if (this.pitPick?.p !== p) {
           let cands = lanes.filter((l) => l.bridge === this.preferBridge);
           if (!cands.length) cands = lanes;
@@ -279,7 +286,7 @@ export class AIDriver {
   // las patas más cercano a su carril (casi siempre; a veces se despista y se la pega).
   specialLane(s) {
     const tr = this.track;
-    if (!tr.waves.length && !tr.legs.length) return null;
+    if (!tr.waves.length && !tr.legs.length && !tr.rex.length) return null;
     for (const w of tr.waves) {
       if (tr.ahead(w.s0 - 25, s) < w.s1 - w.s0 + 25) {
         if (this.waveTry == null) this.waveTry = Math.random() < 0.3 + 0.2 * this.skill;
@@ -298,6 +305,14 @@ export class AIDriver {
       }
     }
     this.legTry = null;
+    // tiranosaurio: por la mitad del camino que no muerde (si decide hacer caso al aviso)
+    for (const R of tr.rex) {
+      if (tr.ahead(s, R.s) < 60 || tr.ahead(R.s, s) < 8) {
+        if (this.rexTry?.R !== R) this.rexTry = { R, go: Math.random() < REX_DODGE(this.skill) };
+        if (!this.rexTry.go) return null;
+        return R.side < 0 ? Math.max(3.5, Math.min(8, this.laneTarget)) : Math.min(-3.5, Math.max(-8, this.laneTarget));
+      }
+    }
     return null;
   }
 
