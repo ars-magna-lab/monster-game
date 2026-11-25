@@ -84,15 +84,15 @@ Pantalla:
 
 ## Campeonato
 
-En la selección de camión, «Modo: Campeonato» encadena los cinco circuitos (Valle, Selva, Nieve, Ciudad y
-Volcán) con los mismos camiones, vueltas y rivales. Cada carrera da 10, 7, 5, 3, 2 y 1 puntos; tras cada una
+En la selección de camión, «Modo: Campeonato» encadena los siete circuitos (Valle, Bahía, Selva, Cañón, Nieve,
+Ciudad y Volcán) con los mismos camiones, vueltas y rivales. Cada carrera da 10, 7, 5, 3, 2 y 1 puntos; tras cada una
 se ve la clasificación general y al final hay podio. Los empates se deciden por victorias y después por el
 puesto en la última carrera. «Reiniciar carrera» repite solo la carrera actual; «Abandonar» o «Salir al menú»
 terminan el campeonato. Se guardan las copas ganadas y la mejor puntuación. Vale para uno o dos jugadores.
 
 ## Qué hay
 
-- Cinco circuitos, cada uno con su trazado, su orden de obstáculos y algo que solo tiene él. Se eligen en la pantalla del camión:
+- Siete circuitos, cada uno con su trazado, su orden de obstáculos y algo que solo tiene él. Se eligen en la pantalla del camión:
   - **Valle Monstruo** (1,9 km): el original, con fosos, troncos, bolas de demolición y cocodrilos.
   - **Pico Helado** (2,5 km): rápido y resbaladizo. Un lago helado lleno de muñecos de nieve, bolas de nieve
     gigantes, un gran salto sobre una grieta de agua helada y una cueva de hielo.
@@ -104,6 +104,13 @@ terminan el campeonato. Se guardan las copas ganadas y la mejor puntuación. Val
   - **Gran Ciudad** (2,4 km): esquinas de 90° y avenidas largas con muchos turbos, dos cruces con tráfico
     que atraviesa la pista (hay que colarse por un hueco), una zona de obras con tuberías y barriles, coches
     para aplastar y una alcantarilla con cocodrilos.
+  - **Cañón Jurásico** (2,2 km): un cañón prehistórico de roca roja. Curvas largas para derrapar, una zona
+    revirada con charcas de alquitrán, dos estampidas de tricerátops que cruzan la pista (hay que colarse por
+    un hueco), un saurópodo gigante entre cuyas patas hay que pasar, un foso de alquitrán y un túnel por dentro
+    del esqueleto de un dinosaurio.
+  - **Bahía Pirata** (2,0 km): arena y mar. Olas que suben por la playa y mojan medio camino (el otro lado queda
+    seco), un muelle con salto sobre los tiburones, la vuelta al faro, castillos de arena para chafar, los
+    cañonazos del barco pirata (cada bala avisa con una diana) y cangrejos gigantes que cruzan de lado.
 
 - Seis camiones con forma, tamaño y estadísticas distintas: Trituradora, Megalodón, Escorpión, Mamut
   (el más grande), Relámpago (el más pequeño) y Dragón.
