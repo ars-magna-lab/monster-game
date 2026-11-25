@@ -113,7 +113,7 @@ export class Track {
   buildFeatures() {
     const f = this.circuit.features((k, rel) => this.at(k, rel), LIMIT);
     // listas vacías por defecto: cada circuito pone solo lo que usa
-    Object.assign(this, { plateaus: [], whoops: [], ramps: [], pits: [], mud: [], lakes: [], reserved: [] }, f);
+    Object.assign(this, { plateaus: [], whoops: [], ramps: [], pits: [], mud: [], lakes: [], reserved: [], meteors: [], crossings: [] }, f);
     for (const p of this.pits) {
       p.water = !!p.liquid; // se cae dentro de algo (agua, hielo o lava)
       p.top = this.baseAt((p.s0 + p.s1) / 2);

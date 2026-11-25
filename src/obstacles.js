@@ -8,6 +8,17 @@ import * as T from './textures.js';
 import { normPlaces } from './circuits.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
+const UP = new THREE.Vector3(0, 1, 0);
+
+// Lluvia de rocas: cada cuánto cae una (s), cuánto avisa (s), radio del golpe (m), parte de
+// las rocas apuntadas a un camión, separación mínima entre rocas en el aire (m), marca (s)
+export const RAIN_EVERY = [0.6, 0.9];
+export const RAIN_FALL = [1.25, 1.45];
+export const RAIN_HIT_R = 4.5;
+const RAIN_AIMED = 0.7;
+const RAIN_GAP = 12;
+const RAIN_SCORCH = 5;
+const RAIN_POOL = 6;
 
 export class Obstacles {
   constructor(track, scene, game) {
@@ -18,7 +29,19 @@ export class Obstacles {
     this.time = 0;
     this.turbos = []; this.boxes = []; this.logs = []; this.balls = [];
     this.nets = []; this.cars = []; this.barrels = []; this.crocs = [];
+    this.rain = null;
     this.build();
+    this.buildRain();
+  }
+
+  // ¿Hay algún camión a menos de R metros (a lo largo de la pista) del tramo [s0, s1]?
+  // Las mecánicas caras solo se actualizan y se dibujan entonces.
+  anyNear(vehicles, s0, s1, R = 250) {
+    const tr = this.track;
+    for (const v of vehicles) {
+      if (tr.ahead(v.s, s0) < R || tr.ahead(s1, v.s) < R || tr.ahead(s0, v.s) < s1 - s0) return true;
+    }
+    return false;
   }
 
   rel(a, b) {
@@ -492,6 +515,174 @@ export class Obstacles {
 
     // cocodrilos
     this.updateCrocs(dt, vehicles);
+
+    // lluvia de rocas (solo con camiones cerca)
+    this.updateRain(dt, vehicles);
+  }
+
+  // ---------- Lluvia de rocas de fuego (volcán) ----------
+  // Cada roca avisa con una diana en el suelo que se va llenando mientras cae; al llegar,
+  // explota y golpea a quien esté cerca. Mallas de un pool pequeño, sin luces nuevas.
+  buildRain() {
+    const z = this.track.meteors[0];
+    if (!z) return;
+    const g = new THREE.Group();
+    this.group.add(g);
+    // roca incandescente con su estela: una sola malla (colores por vértice, sin luz)
+    const rock = new THREE.DodecahedronGeometry(1.5, 0).toNonIndexed();
+    const rc = [], pal = [0xff5a00, 0xc02800, 0xff9a20, 0x7a1800];
+    for (let f = 0; f < rock.attributes.position.count / 3; f++) {
+      const c = new THREE.Color(pal[f % pal.length]);
+      for (let k = 0; k < 3; k++) rc.push(c.r, c.g, c.b);
+    }
+    rock.setAttribute('color', new THREE.Float32BufferAttribute(rc, 3));
+    const tail = new THREE.ConeGeometry(1.25, 11, 7, 1, true).translate(0, 5.5, 0).toNonIndexed();
+    const tc = [];
+    const tailPos = tail.attributes.position;
+    for (let i = 0; i < tailPos.count; i++) {
+      const c = new THREE.Color(0xffd040).lerp(new THREE.Color(0xff3a00), tailPos.getY(i) / 11);
+      tc.push(c.r, c.g, c.b);
+    }
+    tail.setAttribute('color', new THREE.Float32BufferAttribute(tc, 3));
+    tail.deleteAttribute('uv'); rock.deleteAttribute('uv');
+    const meteorGeo = mergeGeometries([rock, tail]);
+    rock.dispose(); tail.dispose();
+    const meteorMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
+    // diana: aro amarillo del tamaño del golpe y disco rojo que crece hasta llenarlo
+    const decal = { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 };
+    const ringGeo = new THREE.RingGeometry(RAIN_HIT_R - 0.7, RAIN_HIT_R, 28).rotateX(-Math.PI / 2);
+    const discGeo = new THREE.CircleGeometry(RAIN_HIT_R - 0.7, 20).rotateX(-Math.PI / 2);
+    const discMat = new THREE.MeshBasicMaterial({ color: 0xd42000, ...decal });
+    const scorchGeo = new THREE.CircleGeometry(3.0, 16).rotateX(-Math.PI / 2);
+    const scorchMat = new THREE.MeshBasicMaterial({ color: 0x2e1c14, ...decal });
+    const free = [], scorch = [];
+    for (let i = 0; i < RAIN_POOL; i++) {
+      const m = new THREE.Mesh(meteorGeo, meteorMat);
+      const ringMat = new THREE.MeshBasicMaterial({ color: 0xffd000, ...decal });
+      const disc = new THREE.Mesh(discGeo, discMat);
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      const mark = new THREE.Group();
+      mark.add(disc, ring);
+      const sc = new THREE.Mesh(scorchGeo, scorchMat);
+      m.visible = mark.visible = sc.visible = false;
+      g.add(m, mark, sc);
+      free.push({ rock: m, mark, disc, ringMat });
+      scorch.push({ mesh: sc, t: 0 });
+    }
+    this.rain = { s0: z.s0, s1: z.s1, group: g, timer: 0.3, active: [], free, scorch, on: false, aimed: new Map(), emitT: 0 };
+    g.visible = false;
+    if (z.sign !== undefined) this.signs('¡LLUVIA DE ROCAS!', '#ff6a00', z.sign);
+  }
+
+  // Lanza una roca: unas apuntadas un poco por delante de algún camión que esté en la zona
+  // y otras al azar. Nunca dos a la vez en la misma franja de pista: siempre queda hueco.
+  spawnMeteor(vehicles) {
+    const tr = this.track, R = this.rain;
+    if (!R.free.length) return;
+    const T = rand(RAIN_FALL[0], RAIN_FALL[1]);
+    const len = R.s1 - R.s0;
+    const clear = (s) => R.active.every((m) => Math.abs(this.rel(m.s, s)) > RAIN_GAP);
+    let s = null, d = 0;
+    if (Math.random() < RAIN_AIMED) {
+      const cands = vehicles.filter((v) => v.state === 'ok' && tr.ahead(R.s0 - 30, v.s) < len + 30 && !(R.aimed.get(v) > this.time));
+      if (cands.length) {
+        const v = cands[Math.floor(Math.random() * cands.length)];
+        const ts = tr.wrap(v.s + Math.max(0, v.vF) * T * rand(0.85, 1.05));
+        if (tr.ahead(R.s0 + 2, ts) < len - 4 && clear(ts)) {
+          s = ts; d = Math.max(-12, Math.min(12, v.d + rand(-2, 2)));
+          R.aimed.set(v, this.time + 1.4);
+        }
+      }
+    }
+    for (let k = 0; s === null && k < 4; k++) {
+      const ts = R.s0 + rand(3, len - 3);
+      if (clear(ts)) { s = ts; d = rand(-12, 12); }
+    }
+    if (s === null) return;
+    const m = R.free.pop();
+    const P = tr.pointAt(s, d);
+    m.s = s; m.d = d; m.t = 0; m.T = T;
+    m.x = P.x; m.z = P.z; m.y = tr.baseAt(s);
+    // cae en diagonal desde lo alto, del lado del volcán
+    m.sx = P.x + 22; m.sy = m.y + 62; m.sz = P.z - 16;
+    const back = new THREE.Vector3(m.sx - m.x, m.sy - m.y, m.sz - m.z).normalize();
+    m.rock.quaternion.setFromUnitVectors(UP, back);
+    m.rock.visible = true;
+    m.mark.position.set(P.x, m.y + 0.09, P.z);
+    m.mark.visible = true;
+    m.disc.scale.setScalar(0.05);
+    m.ringMat.color.setHex(0xffd000);
+    m.ai = null; // decisiones de la IA sobre esta roca (ver AIDriver.meteorLane)
+    R.active.push(m);
+  }
+
+  updateRain(dt, vehicles) {
+    const R = this.rain;
+    if (!R) return;
+    if (!this.anyNear(vehicles, R.s0, R.s1)) {
+      // nadie cerca: no cae nada y no se actualiza nada
+      if (R.on) {
+        for (const m of R.active) { m.rock.visible = m.mark.visible = false; R.free.push(m); }
+        R.active.length = 0;
+        for (const c of R.scorch) { c.t = 0; c.mesh.visible = false; }
+        R.aimed.clear();
+        R.on = false; R.group.visible = false;
+      }
+      return;
+    }
+    R.on = true; R.group.visible = true;
+    R.timer -= dt;
+    if (R.timer <= 0) { R.timer = rand(RAIN_EVERY[0], RAIN_EVERY[1]); this.spawnMeteor(vehicles); }
+    const fx = this.game.fx;
+    R.emitT += dt;
+    const emit = R.emitT >= 1 / 30;
+    if (emit) R.emitT = 0;
+    for (let i = R.active.length - 1; i >= 0; i--) {
+      const m = R.active[i];
+      m.t += dt;
+      const f = Math.min(1, m.t / m.T);
+      const x = m.sx + (m.x - m.sx) * f, y = m.sy + (m.y + 1.2 - m.sy) * f, z = m.sz + (m.z - m.sz) * f;
+      m.rock.position.set(x, y, z);
+      m.disc.scale.setScalar(0.05 + 0.95 * f);
+      // el último momento: el aro parpadea
+      if (m.T - m.t < 0.4) m.ringMat.color.setHex(Math.floor(m.t * 14) % 2 ? 0xff2000 : 0xffffff);
+      if (emit) fx.glow.emit({ x, y, z, vx: (Math.random() - 0.5) * 3, vy: 2, vz: (Math.random() - 0.5) * 3, life: 0.45, size: 2.2, grow: -2, color: [1, 0.5, 0.12], alpha: 1, gravity: 0, drag: 2 });
+      if (m.t < m.T) continue;
+      this.meteorImpact(m, vehicles);
+      m.rock.visible = m.mark.visible = false;
+      R.active.splice(i, 1);
+      R.free.push(m);
+    }
+    for (const c of R.scorch) {
+      if (c.t <= 0) continue;
+      c.t -= dt;
+      c.mesh.scale.setScalar(Math.max(0.01, Math.min(1, c.t / 1.2)));
+      if (c.t <= 0) c.mesh.visible = false;
+    }
+  }
+
+  meteorImpact(m, vehicles) {
+    const game = this.game, R = this.rain;
+    game.fx.explosion(m.x, m.y, m.z);
+    game.boom(m.x, m.y, m.z);
+    for (const v of vehicles) {
+      if (v.state !== 'ok') continue;
+      const dx = v.x - m.x, dz = v.z - m.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist < RAIN_HIT_R && v.y < m.y + 4) {
+        const k = 1 / Math.max(0.5, dist);
+        // a quien acaba de llevarse una no se le apunta en un rato (que no le caigan en cadena)
+        if (v.hit({ dirX: dx * k, dirZ: dz * k, push: 6, up: 10, speedMul: 0.5, stun: 1.1, kind: 'meteor' })) R.aimed.set(v, this.time + 2.5);
+      }
+    }
+    // marca chamuscada unos segundos (la más vieja se reutiliza)
+    let c = R.scorch[0];
+    for (const o of R.scorch) if (o.t < c.t) c = o;
+    c.t = RAIN_SCORCH;
+    c.mesh.position.set(m.x, m.y + 0.07, m.z);
+    c.mesh.rotation.y = Math.random() * 6;
+    c.mesh.scale.setScalar(1);
+    c.mesh.visible = true;
   }
 
   explodeBarrel(b, vehicles) {

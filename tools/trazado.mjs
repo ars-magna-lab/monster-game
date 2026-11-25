@@ -105,7 +105,16 @@ for (const c of list) {
   for (const p of t.plateaus) { add('pendiente', p.a, p.b, 'subida'); add('pendiente', p.c, p.d, 'bajada'); }
   for (const w of t.whoops) add('baches', w.a, w.b);
   for (const m of t.mud) add('mancha', m.s - m.rs, m.s + m.rs);
-  for (const r of t.reserved) add('reservado', r.s0, r.s1, `reservado: ${r.kind}`, { r });
+  // zonas de las mecánicas propias (lluvia de rocas, cruces con tráfico) y las aún reservadas
+  for (const r of t.reserved) add('zona', r.s0, r.s1, `reservado: ${r.kind}`, { r });
+  for (const m of t.meteors) {
+    add('zona', m.s0, m.s1, 'lluvia de rocas');
+    if (m.sign !== undefined) add('cartel', m.sign, m.sign, 'cartel lluvia de rocas', { of: m.s0 });
+  }
+  for (const c of t.crossings) {
+    add('zona', c.s0, c.s1, 'cruce');
+    if (c.sign !== undefined) add('cartel', c.sign, c.sign, 'cartel cruce', { of: c.s0 });
+  }
   for (const RO of PL.rollers) {
     const ss = RO.list.map(([rel]) => A(RO.seg, rel));
     add('rodillos', Math.min(...ss) - 6, Math.max(...ss) + 6, `rodillos ×${ss.length}`);
@@ -144,15 +153,15 @@ for (const c of list) {
       if (overlap(a.s0, a.s1, b.s0, b.s1)) errs.push(`${a.label} (${a.s0.toFixed(0)}–${a.s1.toFixed(0)}) y ${b.label} (${b.s0.toFixed(0)}–${b.s1.toFixed(0)}) se pisan${why ? ': ' + why : ''}`);
     }
   };
-  const HARD = ['foso', 'lago', 'baches', 'rodillos', 'bola', 'red', 'aplastar', 'barriles', 'reservado'];
+  const HARD = ['foso', 'lago', 'baches', 'rodillos', 'bola', 'red', 'aplastar', 'barriles', 'zona'];
   for (const k of ['foso', 'túnel', 'lago', 'pendiente', 'mancha', ...HARD]) pairs('foso', k);
-  for (const k of ['lago', 'baches', 'mancha', 'rodillos', 'bola', 'red', 'aplastar', 'barriles', 'reservado', 'pendiente']) pairs('rampa', k);
-  for (const k of ['túnel', 'baches', 'rodillos', 'bola', 'red', 'barriles', 'reservado', 'pendiente']) pairs('lago', k);
+  for (const k of ['lago', 'baches', 'mancha', 'rodillos', 'bola', 'red', 'aplastar', 'barriles', 'zona', 'pendiente']) pairs('rampa', k);
+  for (const k of ['túnel', 'baches', 'rodillos', 'bola', 'red', 'barriles', 'zona', 'pendiente']) pairs('lago', k);
   for (const [i, ka] of ['rodillos', 'bola', 'red', 'aplastar', 'barriles', 'baches'].entries()) {
     for (const kb of ['rodillos', 'bola', 'red', 'aplastar', 'barriles', 'baches'].slice(i)) pairs(ka, kb);
   }
   for (const k of ['bola', 'red']) pairs(k, 'túnel', 'el pórtico no cabe en el túnel');
-  for (const k of ['rodillos', 'bola', 'red', 'aplastar', 'barriles', 'baches', 'mancha', 'cajas', 'turbo', 'túnel', 'pendiente']) pairs('reservado', k, 'la zona reservada para la fase 2 tiene que quedar libre');
+  for (const k of ['rodillos', 'bola', 'red', 'aplastar', 'barriles', 'baches', 'mancha', 'cajas', 'turbo', 'túnel', 'pendiente', 'zona']) pairs('zona', k, 'la lluvia de rocas y los cruces tienen su tramo para ellos solos');
   // rampas pegadas a su foso, no dentro
   for (const r of E.filter((e) => e.kind === 'rampa')) {
     const p = t.pits.find((q) => Math.abs(q.s0 - r.s1) < 1.5);
@@ -188,10 +197,10 @@ for (const c of list) {
       if (gap > 70) errs.push(`${sg.label} en ${s.toFixed(0)} está a ${gap.toFixed(0)} m de lo que avisa (máx. 70)`);
     }
   }
-  // cruces de tráfico de la fase 2: en recta
-  for (const r of t.reserved) {
+  // cruces con tráfico: en recta (los coches cruzan en línea recta de lado a lado)
+  for (const r of [...t.reserved.filter((q) => q.kind === 'cruce'), ...t.crossings]) {
     const g = t.segs.find((q) => r.s0 >= q.s0 - 0.5 && r.s1 <= q.s0 + q.length + 0.5);
-    if (r.kind === 'cruce' && (!g || g.type !== 'S')) errs.push(`el cruce reservado ${r.s0.toFixed(0)}–${r.s1.toFixed(0)} no está en una recta`);
+    if (!g || g.type !== 'S') errs.push(`el cruce ${r.s0.toFixed(0)}–${r.s1.toFixed(0)} no está en una recta`);
   }
   // barriles: en grupos que encadenan (vecino a < 5 m) y con hueco para pasar
   const near = (a, b) => along(a.s, b.s) < 5 && Math.abs(a.d - b.d) < 5;
@@ -262,7 +271,7 @@ function svg(t, E, c) {
   const out = [`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W.toFixed(0)} ${H.toFixed(0)}" width="${W.toFixed(0)}" height="${H.toFixed(0)}" style="background:#f4f1ea">`];
   out.push(line(0, t.length, '#444', 34), line(0, t.length, '#d9b98c', 26));
   out.push(line(t.tunnel.s0, t.tunnel.s1, '#666', 30));
-  const col = { rodillos: '#e0a100', bola: '#c0392b', red: '#8e44ad', aplastar: '#27ae60', barriles: '#d35400', baches: '#7f8c8d', reservado: '#2980b9' };
+  const col = { rodillos: '#e0a100', bola: '#c0392b', red: '#8e44ad', aplastar: '#27ae60', barriles: '#d35400', baches: '#7f8c8d', zona: '#2980b9' };
   for (const e of E) if (col[e.kind]) out.push(line(e.s0, e.s1, col[e.kind], 16));
   for (const k of t.lakes) out.push(line(k.s0, k.s1, '#9fd3f0', 28));
   for (const p of t.pits) out.push(line(p.s0, p.s1, p.liquid === 'lava' ? '#ff5a00' : p.water ? '#2bb3a0' : '#222', 30));

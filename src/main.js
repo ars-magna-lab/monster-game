@@ -30,6 +30,7 @@ const PLAYER_MSG = {
   log: '¡TRONCO!', ball: '¡BOLAZO!', boom: '¡BOOM!', net: '¡ATRAPADO EN LA RED!', crush: '¡CRUNCH!',
   fallPit: '¡AL FOSO!', fallWater: '¡COCODRILOS!', waved: '¡ONDA EXPANSIVA!', nitro: '¡NITRO!', jump: '¡SUPERSALTO!',
   tired: '¡NEUMATAZO!', barreled: '¡BARRILAZO!', rocketed: '¡COHETAZO!', rocketWarn: '¡TE SIGUE UN COHETE!',
+  meteor: '¡ROCA DE FUEGO!',
 };
 const AI_EVEN = 0.85; // cuánto se igualan las velocidades punta de los camiones de la IA (0 = nada, 1 = del todo)
 const ORDINAL = ['PRIMERO', 'SEGUNDO', 'TERCERO', 'CUARTO', 'QUINTO', 'SEXTO'];
@@ -1145,6 +1146,7 @@ class Game {
           case 'jump': near('boing'); this.fx.dust(v.x, v.y, v.z, 0, 0, undefined, 10, 2); break;
           case 'log': case 'ball': near('crash'); shake(0.7); break;
           case 'boom': shake(0.9); break;
+          case 'meteor': shake(1); break; // la explosión ya suena (boom)
           case 'waved': shake(0.5); break;
           case 'tired': near('crash', 0.8); shake(0.6); break;
           case 'barreled': case 'rocketed': shake(1); break;
@@ -1173,7 +1175,7 @@ class Game {
         }
         const msg = e.type === 'fallWater' ? pitText(this.track.theme, e.liquid) : e.type === 'log' ? this.track.theme.rollerHit : e.type === 'ball' ? this.track.theme.ballHit || PLAYER_MSG.ball : PLAYER_MSG[e.type];
         if (view && msg) {
-          const big = ['fallPit', 'fallWater', 'net', 'ball', 'boom', 'rocketWarn'].includes(e.type);
+          const big = ['fallPit', 'fallWater', 'net', 'ball', 'boom', 'rocketWarn', 'meteor'].includes(e.type);
           view.hud.message(msg, big ? 1.6 : 1.0, big ? 'warn' : '');
         }
       }

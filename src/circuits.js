@@ -156,7 +156,7 @@ export const CIRCUITS = [
   {
     // Saltos y fuego: el más largo, tres fosos de lava, rocas rodantes y un túnel largo con barriles
     id: 'volcan', name: 'Volcán Rugiente', short: 'Volcán', rev: 2,
-    desc: 'El más largo: tres fosos de lava que saltar, rocas rodantes y un túnel lleno de barriles.',
+    desc: 'El más largo: tres fosos de lava que saltar, rocas rodantes, un túnel lleno de barriles y una recta bajo una lluvia de rocas de fuego.',
     //        0       1            2       3             4            5                    6            7                    8            9
     layout: [S(350), A(120, 120), S(430), A(-60, 150), A(150, 100), S(0, { solve: 'X' }), A(60, 130), S(0, { solve: 'Y' }), A(90, 120), S(150)],
     features: (at, L) => ({
@@ -178,8 +178,8 @@ export const CIRCUITS = [
         patch(at, 4, 100, 4), patch(at, 4, 140, -5), patch(at, 4, 180, 0),
       ],
       tunnel: { s0: at(2, 30), s1: at(2, 290) },
-      // fase 2: aquí caerán rocas del volcán (recta de 150 m sin nada)
-      reserved: [{ kind: 'lluvia de rocas', s0: at(7, 20), s1: at(7, 170) }],
+      // lluvia de rocas de fuego: recta de 150 m sin nada más (cartel 35 m antes)
+      meteors: [{ s0: at(7, 20), s1: at(7, 170), sign: at(7, 20) - 35 }],
     }),
     places: {
       turbos: [[0, 40, -6], [0, 40, 6], [2, 310, 0], [4, 240, 0], [5, 200, -7], [7, 240, 0], [9, 60, -6], [9, 60, 6]],
