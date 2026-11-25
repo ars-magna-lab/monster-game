@@ -1,25 +1,31 @@
-// Las copas de la meta: cuando el primero lleva media última vuelta aparece una copa dorada
-// flotando sobre la línea de meta; el primero que cruza se la lleva (vuela hasta su techo y la
-// levanta). Después espera la de plata para el segundo y la de bronce para el tercero.
+// Las copas de la meta: cuando el primero lleva media última vuelta aparece una copa dorada de
+// pie sobre la línea de meta, a la altura de los camiones; el primero que cruza se la lleva
+// enganchada en la rueda delantera y la levanta haciendo caballitos. Después espera la de plata
+// para el segundo y la de bronce para el tercero.
 // Una instancia por circuito cargado: sus mallas viven en la escena y las libera disposeScene.
 import * as THREE from 'three';
 import { buildCupGeometry } from './copa.js';
+import { WHEEL_R, WHEEL_X, WHEEL_Z } from './trucks.js';
 
-// Por puesto: color, tamaño esperando en la meta, tamaño sobre el camión, veces que la levanta,
-// altura de cada levantamiento (m), confeti por levantamiento y sonido
+// Por puesto: color, tamaño esperando en la meta (la copa mide 3 m a escala 1), tamaño en la
+// rueda, caballitos cortos antes del que se mantiene, confeti por caballito y sonido
 const TIERS = [
-  { name: 'oro', color: 0xffc81e, emissive: 0x8a5a00, scale: 1.7, held: 1.0, lifts: 4, lift: 2.6, confetti: 90, sound: 'trophy', msg: '¡LA COPA ES TUYA!' },
-  { name: 'plata', color: 0xdfe6ef, emissive: 0x4a5866, scale: 1.45, held: 0.85, lifts: 2, lift: 2.0, confetti: 45, sound: 'trophySmall', msg: '¡COPA DE PLATA!' },
-  { name: 'bronce', color: 0xd0813c, emissive: 0x5a2c08, scale: 1.3, held: 0.75, lifts: 2, lift: 1.6, confetti: 30, sound: 'trophySmall', msg: '¡COPA DE BRONCE!' },
+  { name: 'oro', color: 0xffc81e, emissive: 0x8a5a00, scale: 1.1, held: 0.8, lifts: 2, confetti: 90, sound: 'trophy', msg: '¡LA COPA ES TUYA!' },
+  { name: 'plata', color: 0xdfe6ef, emissive: 0x4a5866, scale: 0.95, held: 0.72, lifts: 1, confetti: 45, sound: 'trophySmall', msg: '¡COPA DE PLATA!' },
+  { name: 'bronce', color: 0xd0813c, emissive: 0x5a2c08, scale: 0.85, held: 0.66, lifts: 1, confetti: 30, sound: 'trophySmall', msg: '¡COPA DE BRONCE!' },
 ];
-// Dónde espera la copa: sobre la línea de meta, encima del travesaño del pórtico (acaba a 12,3 m),
-// para que se vea desde el principio de la recta por encima del propio camión; la dorada mide
-// 5 m. Un haz de luz vertical y unos rayos que giran detrás la hacen visible de lejos.
+// Dónde espera la copa: de pie sobre la línea de meta, en el centro, a un palmo del suelo (CUP_Y);
+// no es sólida: los camiones la atraviesan. Un haz de luz vertical y unos rayos que giran la
+// hacen visible desde el principio de la recta aunque haya camiones delante.
 export const CUP_S = 0;
-export const CUP_Y = 13.4;
-const FLY = 0.7;       // segundos del vuelo hasta el camión
-const LIFT_T = 0.75;   // segundos de cada levantamiento
+export const CUP_Y = 0.3;
+const FLY = 0.35;      // segundos del salto hasta la rueda
+const UP_T = 1.0;      // caballito corto: sube en UP_T s y baja en DOWN_T s
+const DOWN_T = 0.4;
+const CYCLE = UP_T + DOWN_T;
 const APPEAR = 0.45;   // segundos del destello al aparecer
+// Cuánto dura la ceremonia (s desde que la copa llega a la rueda): la cámara de la celebración
+export const CEREMONY = (T) => T.lifts * CYCLE + UP_T + 1.5;
 
 export class FinishCups {
   constructor(track, scene, game) {
@@ -51,6 +57,7 @@ export class FinishCups {
 
   // Todo como al empezar la carrera: ninguna copa a la vista
   reset() {
+    for (const c of this.cups || []) if (c.holder) c.holder.wheelie = 0;
     this.next = 0; // la copa que toca dar (0 oro, 1 plata, 2 bronce; 3: ya no hay más)
     for (const c of this.cups) {
       c.state = 'none'; // none · waiting · flying · held
@@ -67,8 +74,12 @@ export class FinishCups {
     return out.set(P.x, this.track.baseAt(s) + CUP_Y, P.z);
   }
 
-  // Altura del techo del camión (la copa se apoya encima)
-  roofY(v) { return v.y + 3.0 * v.size + 0.8; }
+  // Dónde va la copa: encima de la rueda delantera del lado side (1: x local +), algo hacia fuera
+  // para que no se meta en la carrocería; sigue a la rueda en el caballito
+  wheelPos(v, side, out) {
+    v.mesh.updateMatrix();
+    return out.set(side * (WHEEL_X + 0.35), 2 * WHEEL_R + 0.05, WHEEL_Z).applyMatrix4(v.mesh.matrix);
+  }
 
   show(c) {
     if (c.state !== 'none') return;
@@ -83,10 +94,13 @@ export class FinishCups {
   // ¿Lleva v una copa encima? (para la cámara)
   heldBy(v) { return this.cups.some((c) => c.holder === v && (c.state === 'held' || c.state === 'flying')); }
 
+  // Lado de la rueda que lleva la copa de v (1: x local +), o 0
+  cupSide(v) { const c = this.cups.find((q) => q.holder === v && q.state !== 'waiting'); return c ? c.side : 0; }
+
   // ¿Está v en plena ceremonia (la copa vuela hacia él o la está levantando)? La cámara la sigue
   // de cerca entonces, en vez de quedarse atrás
   ceremony(v) {
-    return this.cups.some((c) => c.holder === v && (c.state === 'flying' || (c.state === 'held' && c.t < c.T.lifts * LIFT_T + 1.2)));
+    return this.cups.some((c) => c.holder === v && (c.state === 'flying' || (c.state === 'held' && c.t < CEREMONY(c.T))));
   }
 
   // Un camión ha cruzado la meta en la última vuelta: si queda copa, para él
@@ -96,6 +110,9 @@ export class FinishCups {
     if (c.state === 'none') this.show(c); // (por si nadie había llegado a media vuelta)
     c.state = 'flying'; c.t = 0; c.holder = v;
     c.from = c.mesh.position.clone();
+    // la rueda delantera del lado más cercano a la copa (x local + es el lado de d negativo)
+    c.side = v.d > 0 ? 1 : -1;
+    c.to = new THREE.Vector3();
     c.msgPending = !!this.game.viewOf?.(v);
     // la siguiente ya espera en la meta
     if (this.next < this.cups.length) this.show(this.cups[this.next]);
@@ -116,7 +133,8 @@ export class FinishCups {
     this.glow.visible = !!w;
     if (w) {
       this.linePos(this.glow.position);
-      this.glow.position.y += 1.5 * w.T.scale;
+      // el halo, a la altura de la boca de la copa: asoma por encima de los camiones que la tapan
+      this.glow.position.y += 3 * w.T.scale + 2.5;
       this.raysMat.color.setHex(w.T.color);
       this.beamMat.color.setHex(w.T.color);
       this.raysMat.rotation += dt * 0.6;
@@ -133,44 +151,46 @@ export class FinishCups {
         const pop = k < 1 ? Math.sin(k * Math.PI * 0.5) * (1 + 0.35 * Math.sin(k * Math.PI)) : 1;
         m.scale.setScalar(T.scale * Math.max(0.01, pop));
         this.linePos(m.position);
-        m.position.y += Math.sin(c.t * 2) * 0.25;
+        m.position.y += 0.15 + Math.sin(c.t * 2) * 0.15;
         m.rotation.set(0, c.t * 1.1, 0);
         c.mat.emissiveIntensity = 0.55 + 0.25 * Math.sin(c.t * 4);
         c.sparkT -= dt;
         if (c.sparkT <= 0 && g.fx) { c.sparkT = 0.35; g.fx.sparks(m.position.x, m.position.y + 1.6 * T.scale, m.position.z, 2); }
       } else if (c.state === 'flying') {
-        // vuela en arco hasta el techo del camión, encogiendo
+        // salto corto hasta encima de la rueda delantera
         const v = c.holder;
         const u = Math.min(1, c.t / FLY), e = u * u * (3 - 2 * u);
-        m.position.set(
-          c.from.x + (v.x - c.from.x) * e,
-          c.from.y + (this.roofY(v) - c.from.y) * e + Math.sin(Math.PI * u) * 5,
-          c.from.z + (v.z - c.from.z) * e,
-        );
+        this.wheelPos(v, c.side, c.to);
+        m.position.lerpVectors(c.from, c.to, e);
+        m.position.y += Math.sin(Math.PI * u) * 2;
         m.scale.setScalar(T.scale + (T.held - T.scale) * e);
-        m.rotation.set(0, c.t * 9, 0);
-        if (u >= 1) { c.state = 'held'; c.t = 0; c.lifted = 0; c.confettiN = -1; }
+        m.rotation.set(0, Math.PI / 2 - v.th + (1 - e) * 4, 0);
+        if (u >= 1) { c.state = 'held'; c.t = 0; c.lifted = -1; }
       } else {
-        // sobre el techo: la levanta T.lifts veces (el camión da un saltito) y se queda encima
+        // en la rueda: caballitos cortos (sube UP_T s, baja DOWN_T s) y uno que se mantiene arriba
         const v = c.holder;
-        const n = Math.floor(c.t / LIFT_T), u = (c.t % LIFT_T) / LIFT_T;
-        let up = 0, tilt = 0;
-        if (n < T.lifts) {
-          if (c.lifted <= n) {
-            c.lifted = n + 1;
-            if (v.state === 'ok' && v.onGround) { v.vy = Math.max(v.vy, 4.5); v.onGround = false; }
-            if (n === 0) {
-              const view = g.viewOf?.(v);
-              if (view) g.sound.play(T.sound, 0.7); else if (g.sound3d) g.sound3d(T.sound, v.x, v.z, 0.6);
-            }
+        const n = Math.floor(c.t / CYCLE), u = c.t - n * CYCLE;
+        let w;
+        if (n < T.lifts) w = u < UP_T ? Math.sin((u / UP_T) * Math.PI / 2) : 1 - (u - UP_T) / DOWN_T;
+        else w = Math.min(1, Math.sin(Math.min(1, u / UP_T) * Math.PI / 2) + (n > T.lifts ? 1 : 0));
+        v.wheelie = Math.max(0, w);
+        if (c.lifted < n && u > UP_T * 0.6) {
+          // arriba del todo: confeti (y la fanfarria en el primero)
+          c.lifted = n;
+          if (n <= T.lifts) {
+            const p = this.wheelPos(v, c.side, c.to);
+            g.fx?.confetti(p.x, p.y + 2, p.z, n < T.lifts ? T.confetti : Math.round(T.confetti * 0.6));
           }
-          up = Math.sin(Math.PI * u) * T.lift;
-          tilt = Math.sin(Math.PI * 2 * u) * 0.25;
-          if (u > 0.45 && c.confettiN !== n) { c.confettiN = n; g.fx?.confetti(v.x, this.roofY(v) + up + 1.5, v.z, T.confetti); }
+          if (n === 0) {
+            const view = g.viewOf?.(v);
+            if (view) g.sound.play(T.sound, 0.7); else if (g.sound3d) g.sound3d(T.sound, v.x, v.z, 0.6);
+          }
         }
-        m.position.set(v.x, this.roofY(v) + up, v.z);
+        // derecha (apenas inclinada hacia atrás con el caballito), sin girar con la rueda
+        this.wheelPos(v, c.side, m.position);
         m.scale.setScalar(T.held);
-        m.rotation.set(0, c.t * 0.8, tilt);
+        m.rotation.set(0, Math.PI / 2 - v.th, 0);
+        m.rotateX(-0.15 * v.wheelieK);
         m.visible = v.mesh.visible;
       }
       // mensaje para el jugador que se la lleva, si no pisa a otro que ya haya en pantalla
