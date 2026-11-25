@@ -157,7 +157,7 @@ export class Vehicle {
 
   hit({ dirX = 0, dirZ = 0, push = 0, up = 0, speedMul = 1, stun = 0, kind = 'hit' }) {
     if (this.invuln > 0 || this.hitCool > 0 || this.state !== 'ok' || this.giant > 0) return false;
-    const k = this.stunMul;
+    const k = this.stunMul * (this.assist ?? 1); // assist: ayuda del nivel «Muy fácil» (golpes a la mitad)
     this.vx *= speedMul; this.vz *= speedMul;
     this.vx += dirX * push * k; this.vz += dirZ * push * k;
     if (up > 0) { this.vy = Math.max(this.vy, up * Math.min(1.2, k)); this.onGround = false; }

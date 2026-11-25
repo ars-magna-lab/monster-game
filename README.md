@@ -116,6 +116,10 @@ terminan el campeonato. Se guardan las copas ganadas y la mejor puntuación. Val
 - Seis camiones con forma, tamaño y estadísticas distintas: Trituradora, Megalodón, Escorpión, Mamut
   (el más grande), Relámpago (el más pequeño) y Dragón.
 - Cuenta atrás con semáforo, cinco rivales controlados por el ordenador y 1, 3 o 5 vueltas.
+- Cuatro niveles de rivales: Muy fácil, Fácil, Normal y Difícil. «Muy fácil» está pensado para los más pequeños:
+  los rivales van despacio, esperan al jugador y no le atacan; acelerar antes de tiempo no ahoga el motor; los
+  golpes aturden la mitad; nadie le chafa; si se atasca o va al revés, vuelve solo a la pista; y el modo gigante
+  le toca más a menudo.
 - Obstáculos: foso con rampa, troncos que ruedan de lado a lado, túnel oscuro, foso de cocodrilos
   (rampa o puente estrecho), la red que baja y atrapa, bolas de demolición, barro, baches,
   barriles explosivos y coches para aplastar.

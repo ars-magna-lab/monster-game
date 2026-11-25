@@ -1,5 +1,5 @@
 // Captura y carrera simulada de cada circuito. Uso: node tools/circuits.mjs [id...]
-// Con --medir [--vueltas N] [--carreras N] [--dif facil,normal,dificil] no hace capturas y saca
+// Con --medir [--vueltas N] [--carreras N] [--dif peques,facil,normal,dificil] no hace capturas y saca
 // estadísticas de la IA (golpes, caídas, reapariciones), de objetos y de puestos.
 // --camion N elige el camión del humano simulado (0..5; por defecto el de los ajustes).
 import puppeteer from 'puppeteer-core';

@@ -23,6 +23,11 @@ import { newCup, addRace, standings, buildPodium } from './copa.js';
 
 const STEP = 1 / 120;
 const DIFF = {
+  // «Muy fácil», para los más pequeños. Rivales lentos y torpes que esperan al jugador (band: cuánto
+  // frenan si van por delante, cuánto aprietan si van por detrás, y en cuántos metros) y ayudas
+  // (kids): sin motor ahogado, sin que lo chafen, golpes a la mitad, reaparición automática si se
+  // atasca o va al revés, rivales que no atacan y el modo gigante más a menudo.
+  peques: { mul: 0.74, skill: 0.5, label: 'Muy fácil', band: [0.72, 1.02, 450], kids: true },
   facil: { mul: 0.86, skill: 0.7, label: 'Fácil' },
   normal: { mul: 0.95, skill: 1, label: 'Normal' },
   dificil: { mul: 1.03, skill: 1.5, label: 'Difícil' },
@@ -66,7 +71,7 @@ const START = {
   press: 0.3,        // por encima de esto el gatillo cuenta como pulsado
   aiBoost: 0.35,     // probabilidad de que un camión de la IA salga con turbo
 };
-const AI_STALL = { facil: 0.12, normal: 0.06, dificil: 0.015 }; // probabilidad de que se le ahogue a la IA
+const AI_STALL = { peques: 0.3, facil: 0.12, normal: 0.06, dificil: 0.015 }; // probabilidad de que se le ahogue a la IA
 // Tipo de salida según cuándo empezó la pulsación que sigue mantenida (valor de la cuenta en ese momento)
 const startKind = (held) => (held === null ? null : held > START.two ? 'stall' : held > START.two - START.perfect ? 'perfect' : 'good');
 const $ = (id) => document.getElementById(id);
@@ -700,6 +705,8 @@ class Game {
       v.place = i + 1;
       this.drivers.set(v, new AIDriver(v, this.track, { skill: v.isPlayer ? 1.5 : diff.skill, preferBridge: Math.random() < 0.5 }));
     });
+    this.kids = !!diff.kids;
+    for (const v of this.vehicles) v.assist = this.kids && v.isPlayer ? 0.5 : 1; // golpes a la mitad
     this.humans = humans;
     this.raceTime = 0;
     this.countdown = START.total;
@@ -792,12 +799,15 @@ class Game {
     if (n < GIANT_ROLL.minTrucks || this.raceTime < GIANT_ROLL.minTime) return false;
     if (this.vehicles.some((o) => o.giant > 0 || o.item === 'giant')) return false;
     const lead = Math.max(...this.vehicles.map((o) => o.progress));
-    if (lead - v.progress < GIANT_ROLL.minGap) return false;
+    // en «Muy fácil» le toca antes y más a menudo (y solo a los jugadores: ver rollItem)
+    if (lead - v.progress < GIANT_ROLL.minGap * (this.kids ? 0.5 : 1)) return false;
     const p = v.place === n ? GIANT_ROLL.last : v.place === n - 1 ? GIANT_ROLL.second : 0;
-    return Math.random() < p;
+    return Math.random() < (this.kids ? Math.min(0.75, p * 1.6 + (v.place > n / 2 ? 0.12 : 0)) : p);
   }
 
   rollItem(v) {
+    // en «Muy fácil» los rivales no atacan ni se hacen gigantes: solo nitro y supersalto
+    if (this.kids && !v.isPlayer) return Math.random() < 0.6 ? 'nitro' : 'jump';
     if (this.giantRoll(v)) return 'giant';
     const t = (v.place - 1) / Math.max(1, this.vehicles.length - 1);
     // los de atrás reciben objetos más fuertes; el cohete nunca le toca al primero
@@ -1135,8 +1145,9 @@ class Game {
     this.projectiles.update(dt);
     for (const v of this.vehicles) {
       if (v.state !== 'ok') continue;
-      const limit = v.isPlayer && !this.autopilot ? 5 : 2.5;
-      if (v.stuckT > limit || (!v.isPlayer && v.wrongT > 4)) { v.respawn(v.s, v.d * 0.5, 6); v.stuckT = 0; v.wrongT = 0; }
+      // «Muy fácil»: al jugador también se le devuelve solo a la pista si se atasca o va al revés
+      const limit = v.isPlayer && !this.autopilot && !this.kids ? 5 : 2.5;
+      if (v.stuckT > limit || (!v.isPlayer && v.wrongT > 4) || (this.kids && v.isPlayer && v.wrongT > 3)) { v.respawn(v.s, v.d * 0.5, 6); v.stuckT = 0; v.wrongT = 0; }
     }
     this.rank();
   }
@@ -1162,7 +1173,8 @@ class Game {
         a.x -= nx * over * (mb / (ma + mb)); a.z -= nz * over * (mb / (ma + mb));
         b.x += nx * over * (ma / (ma + mb)); b.z += nz * over * (ma / (ma + mb));
         const vn = (b.vx - a.vx) * nx + (b.vz - a.vz) * nz;
-        const cr = this.crushPair(a, b, nx, nz, d / R2);
+        let cr = this.crushPair(a, b, nx, nz, d / R2);
+        if (cr && this.kids && cr.small.isPlayer && !cr.big.isPlayer) cr = null; // «Muy fácil»: los rivales no chafan al jugador
         if (cr && cr.small.crush(cr.big, cr.dur, cr.how)) {
           // el que chafa sigue casi igual; el chafado se queda donde está, casi parado
           cr.big.vx *= 0.95; cr.big.vz *= 0.95;
@@ -1226,7 +1238,9 @@ class Game {
     });
     sorted.forEach((v, i) => { v.place = i + 1; });
     // "goma elástica": la IA se ajusta al jugador humano que va delante
-    const base = (DIFF[this.settings.diff] || DIFF.normal).mul;
+    const dif = DIFF[this.settings.diff] || DIFF.normal;
+    const base = dif.mul;
+    const [lo, hi, span] = dif.band || [0.92, 1.1, 900];
     // la IA va casi siempre a fondo, así que entre sus camiones decidía solo la velocidad punta
     // (Escorpión siempre último, Megalodón casi siempre primero): se acercan entre sí
     const avgMax = this.vehicles.reduce((a, v) => a + v.maxSpeed, 0) / this.vehicles.length;
@@ -1235,7 +1249,7 @@ class Game {
     for (const v of this.vehicles) {
       if (v.isPlayer) { v.speedMul = 1; continue; }
       const even = base * (1 + AI_EVEN * (avgMax - v.maxSpeed) / v.maxSpeed);
-      v.speedMul = ref === null ? even : even * clamp(1 + (ref - v.progress) / 900, 0.92, 1.1);
+      v.speedMul = ref === null ? even : even * clamp(1 + (ref - v.progress) / span, lo, hi);
     }
   }
 
@@ -1597,7 +1611,8 @@ class Game {
         v.hud.big('¡YA!', 1.0, 'go');
         const p = v.player;
         p.rev = 0;
-        const kind = this.autopilot ? null : startKind(v.heldSince);
+        let kind = this.autopilot ? null : startKind(v.heldSince);
+        if (kind === 'stall' && this.kids) kind = null; // «Muy fácil»: acelerar antes de tiempo no ahoga el motor
         if (kind === 'stall') {
           p.stall = START.stall;
           v.hud.message('¡MOTOR AHOGADO!', 1.4, 'warn');
