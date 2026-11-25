@@ -175,6 +175,8 @@ for (const c of list) {
         errs.push(`${e.label} en la zona de aterrizaje del foso (${p.s0.toFixed(0)}–${p.s1.toFixed(0)})`);
       }
     }
+    // con líquido, el líquido muy por debajo de la pista: si no, el foso es un escalón y no un agujero
+    if (p.water && p.top - p.floor < 2.5) errs.push(`el líquido del foso en ${p.s0.toFixed(0)} queda a ${(p.top - p.floor).toFixed(1)} m bajo la pista (mín. 2,5 m)`);
     const ramps = t.ramps.filter((r) => Math.abs(r.s1 - p.s0) < 1.5);
     if (!ramps.length && !p.bridges.length) errs.push(`foso en ${p.s0.toFixed(0)} sin rampa ni puente`);
     for (const [b0, b1] of p.bridges) if (b0 < -LIMIT || b1 > LIMIT || b1 - b0 < 4.5) errs.push(`puente [${b0}, ${b1}] fuera de la pista o demasiado estrecho`);

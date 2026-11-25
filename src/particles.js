@@ -44,6 +44,7 @@ export class Particles {
     this.alpha0 = new Float32Array(max);
     this.grav = new Float32Array(max);
     this.drag = new Float32Array(max);
+    this.under = new Uint8Array(max); // nació bajo el suelo (en un foso excavado): ahí sí se ve
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage));
     g.setAttribute('pcolor', new THREE.BufferAttribute(this.col, 3).setUsage(THREE.DynamicDrawUsage));
@@ -84,6 +85,7 @@ export class Particles {
     this.alpha0[i] = o.alpha ?? 1;
     this.grav[i] = o.gravity || 0;
     this.drag[i] = o.drag ?? 1;
+    this.under[i] = o.y < -0.1 ? 1 : 0;
     this.size[i] = this.size0[i];
     this.alpha[i] = this.alpha0[i];
   }
@@ -93,7 +95,7 @@ export class Particles {
     // (la última subida ya las dejó todas transparentes)
     if (this.alive === 0) { this.points.visible = false; return; }
     this.points.visible = true;
-    const { pos, vel, life, maxLife, size, size0, grow, alpha, alpha0, grav, drag } = this;
+    const { pos, vel, life, maxLife, size, size0, grow, alpha, alpha0, grav, drag, under } = this;
     let alive = 0;
     for (let i = 0; i < this.max; i++) {
       if (life[i] <= 0) { if (alpha[i] !== 0) { alpha[i] = 0; size[i] = 0; } continue; }
@@ -107,8 +109,9 @@ export class Particles {
       const t = Math.max(0, life[i] / maxLife[i]);
       size[i] = size0[i] + grow[i] * (1 - t);
       alpha[i] = alpha0[i] * Math.min(1, t * 2.5);
-      // bajo el suelo no se ven (el suelo ya no escribe profundidad y no las tapa)
-      if (pos[i3 + 1] < -0.1) alpha[i] = 0;
+      // bajo el suelo no se ven (el suelo ya no escribe profundidad y no las tapa), salvo las
+      // que nacen dentro de un foso excavado (salpicaduras, explosiones de lava)
+      if (pos[i3 + 1] < -0.1 && !under[i]) alpha[i] = 0;
     }
     this.alive = alive;
     for (const n of ['position', 'pcolor', 'psize', 'palpha']) this.geo.attributes[n].needsUpdate = true;

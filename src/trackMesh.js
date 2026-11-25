@@ -119,7 +119,9 @@ export function buildTrackMeshes(track, scene) {
   const pitWallMat = new THREE.MeshStandardMaterial({ map: T.dirtTex(), roughness: 1, side: THREE.DoubleSide, color: 0x9c8a7a });
   for (const p of track.pits) {
     const rows = rowsBetween(track, p.s0, p.s1);
-    const bottom = p.water ? 0 : p.floor;
+    // sobre una meseta, las paredes llegan hasta el suelo de alrededor (y = 0); en un foso excavado
+    // bajo el suelo, hasta 3 m por debajo del líquido (lo que se hunde un camión al caer)
+    const bottom = !p.water ? p.floor : p.floor < 0 ? p.floor - 3 : 0;
     // paredes laterales
     for (const side of [-1, 1]) {
       const g = strip(track, rows, (s) => [[side * LIMIT, bottom], [side * LIMIT, track.baseAt(s)]], (s, k, d, y) => [s / 6, y / 6]);
