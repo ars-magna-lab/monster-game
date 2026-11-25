@@ -382,6 +382,62 @@ export const CIRCUITS = [
       cross: 'trike', crossName: '¡ESTAMPIDA!', crushName: '¡HUEVOS!', msg: { car: '¡TRICERÁTOPS!' },
     },
   },
+  {
+    // Costa: la recta de la playa con olas, un muelle sobre el mar con salto y tiburones, una
+    // horquilla alrededor del faro y el espigón bajo los cañonazos del barco pirata
+    id: 'playa', name: 'Bahía Pirata', short: 'Playa',
+    desc: 'Arena y mar: olas que inundan la playa, un muelle con salto sobre los tiburones, la vuelta al faro y los cañonazos del barco pirata.',
+    //        0       1           2       3            4                    5            6                    7           8       9
+    layout: [S(300), A(-90, 60), S(200), A(180, 55), S(0, { solve: 'X' }), A(90, 100), S(0, { solve: 'Y' }), A(90, 60), S(100), A(90, 60)],
+    features: (at, L) => ({
+      ramps: [fullRamp(at, L, 2, 70)],
+      // el salto del muelle: agua con tiburones entre dos trozos de muelle
+      pits: [{ name: 'muelle', s0: at(2, 86), s1: at(2, 108), floor: 1.4, liquid: 'water', crocs: true }],
+      pier: { s0: at(2, 0), s1: at(2, 200) },
+      // algas en las curvas
+      mud: [patch(at, 3, 40, 4), patch(at, 3, 120, -4), patch(at, 7, 40, 4), patch(at, 9, 50, -3)],
+      tunnel: { s0: at(6, 40), s1: at(6, 220) }, // la cueva del acantilado
+      // olas: entran y salen por el lado del mar (izquierda) en la recta de la playa
+      waves: [{ s0: at(0, 150), s1: at(0, 280), side: -1, sign: at(0, 110) }],
+      // cañonazos del barco pirata sobre el espigón (cartel 35 m antes)
+      meteors: [{ s0: at(4, 120), s1: at(4, 270), sign: at(4, 85) }],
+    }),
+    places: {
+      turbos: [[0, 40, -6], [0, 40, 6], [2, 30, 0], [4, 290, -6], [4, 290, 6], [6, 300, 0], [8, 50, 0]],
+      boxes: [[0, 100], [2, 160], [4, 70], [6, 20], [9, 30]],
+      // cangrejos gigantes que cruzan de lado y pelotas de playa que ruedan
+      rollers: [
+        { seg: 6, list: [[290, 4.0, 0.1], [318, 4.6, 0.6], [346, 3.8, 0.3]], sign: [6, 250] },
+      ],
+      balls: [],
+      nets: [],
+      crush: [{ seg: 4, rows: crushRows([20, 33, 46, 59]), sign: [3, 140] }],
+      barrels: [{ seg: 6, rows: [...barrelGroup(90, -1), ...barrelGroup(130, 1), ...barrelGroup(175, -1)] }],
+      patchSigns: [[3, 10], [7, 10]],
+    },
+    theme: {
+      tex: {
+        id: 'playa',
+        edge: ['#efdcae', '#e4cf9c', '#f6e7c0', '#dcc490'],
+        road: ['#d9bd88', '#ccb07a', '#e4c896', '#c2a46e', '#ead2a2', '#b89a66'],
+        ruts: '#9a7a48', curb: ['#ff5a36', '#ffffff'],
+        grass: ['#f0dcac', '#e8d29c', '#f6e6bc', '#e2c994', '#fbefd0'],
+        dirt: ['#c9a874', '#b89866', '#d6b886', '#a88856'],
+        barrier: ['#ffffff', '#1aa0d8'],
+        rock: ['#c8a878', '#b8986a', '#d6b888', '#a8885a', '#e0c494'],
+        patch: [[52, 92, 40], [70, 110, 52], [120, 150, 70]],
+        water: ['#1fb5c8', 'rgba(255,255,255,0.55)'],
+      },
+      sky: [0x2f9be8, 0xd8f0ff], fog: [0xd6eef8, 280, 1450],
+      hemi: [0xe8f6ff, 0xc9a878, 1.1], sun: [0xfff6e0, 2.8],
+      mountains: 0x7f9c8a, hills: 0x9fb86a, trees: 'palm', rocks: 0xb8986a, beach: true,
+      // el mar: todo lo que queda a la izquierda de la playa y a la derecha del espigón
+      sea: { z: -42, x: 540 },
+      tunnel: { inner: 0xc8a878, outer: 0xc9a46a }, crocs: true, sharks: true, crocName: '¡TIBURONES!',
+      roller: 'crab', crush: 'sandcastle', patch: 'mud', patchName: '¡ALGAS!', rollerName: '¡CANGREJOS!', rollerHit: '¡CANGREJO!', dust: [0.92, 0.84, 0.66],
+      cannon: true, rainName: '¡CAÑONAZOS!', crushName: '¡CASTILLOS!', msg: { meteor: '¡CAÑONAZO!' },
+    },
+  },
 ];
 
 export const circuitById = (id) => CIRCUITS.find((c) => c.id === id) || CIRCUITS[0];
