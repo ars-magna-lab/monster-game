@@ -263,18 +263,42 @@ export const CIRCUITS = [
     },
   },
   {
-    id: 'ciudad', name: 'Gran Ciudad', short: 'Ciudad',
-    desc: 'Avenidas, rascacielos, manchas de aceite, obras y coches para aplastar.',
-    layout: [S(260), A(90, 45), S(340), A(90, 45), A(-90, 40), A(90, 40), A(-30, 60), S(280), A(90, 45), S(0, { solve: 'X' }), A(120, 45), S(0, { solve: 'Y' })],
-    features: (at, L) => standardFeatures(at, L, { liquid: 'water', extraPatches: [[9, 400, 4], [9, 480, -4], [11, 200, 0]] }),
+    // Velocidad entre manzanas: esquinas de 90° cerradas, avenidas largas, obras y alcantarilla
+    id: 'ciudad', name: 'Gran Ciudad', short: 'Ciudad', rev: 2,
+    desc: 'Avenidas a toda velocidad, esquinas cerradas, obras, aceite y una alcantarilla con cocodrilos.',
+    //        0       1          2       3           4       5          6       7          8                    9          10      11          12      13         14                   15         16
+    layout: [S(280), A(90, 38), S(160), A(-90, 38), S(140), A(90, 38), S(210), A(90, 38), S(0, { solve: 'X' }), A(90, 38), S(150), A(-90, 38), S(120), A(90, 38), S(0, { solve: 'Y' }), A(90, 38), S(150)],
+    features: (at, L) => ({
+      ramps: [{ s0: at(8, 330), s1: at(8, 346), d0: -L, d1: 3, h: 3.5 }],
+      pits: [{ name: 'alcantarilla', s0: at(8, 346), s1: at(8, 368), floor: 1.4, liquid: 'water', bridges: [[6.5, 11.5]] }],
+      // aceite en las frenadas, antes de cada esquina
+      mud: [
+        patch(at, 0, 255, 4), patch(at, 4, 118, -4), patch(at, 6, 195, 3),
+        patch(at, 8, 425, -3), patch(at, 12, 100, 4), patch(at, 14, 205, 0),
+      ],
+      tunnel: { s0: at(6, 30), s1: at(6, 180) }, // paso subterráneo
+      // fase 2: cruces por donde pasará el tráfico (30 m de recta sin nada)
+      reserved: [
+        { kind: 'cruce', s0: at(8, 255), s1: at(8, 285) },
+        { kind: 'cruce', s0: at(10, 60), s1: at(10, 90) },
+      ],
+    }),
     places: {
-      ...STANDARD_PLACES,
-      crush: [{
-        seg: 0, sign: [0, 80],
-        rows: [[100, [-8, -3, 2, 7]], [113, [-5.5, -0.5, 4.5, 9]], [126, [-8, -3, 2, 7]], [139, [-5.5, -0.5, 4.5, 9]], [152, [-8, -3, 2, 7]], [165, [-5.5, -0.5, 4.5, 9]]],
-      }],
-      turbos: [...STANDARD_PLACES.turbos, [9, 450, 0], [9, 560, -5], [9, 560, 5]],
-      boxes: [...STANDARD_PLACES.boxes, [9, 520]],
+      turbos: [
+        [0, 40, -6], [0, 40, 6], [2, 20, 0], [4, 30, -5], [4, 30, 5], [6, 10, 0], [8, 30, -6], [8, 30, 6],
+        [8, 230, 0], [10, 20, 0], [12, 15, 0], [14, 30, -6], [14, 30, 6], [16, 60, 0],
+      ],
+      boxes: [[0, 200], [4, 60], [8, 240], [10, 120], [14, 150]],
+      // obras: tuberías rodantes, bolas de demolición y barriles
+      rollers: [{ seg: 8, list: [[60, 4.2, 0], [85, 3.6, 0.45], [110, 4.8, 0.2]], sign: [8, 26] }],
+      balls: [{ seg: 2, rel: 55, phase: 0 }, { seg: 2, rel: 105, phase: Math.PI }],
+      nets: [[14, 100]],
+      crush: [
+        { seg: 0, rows: crushRows([100, 113, 126, 139]), sign: [0, 75] },
+        { seg: 12, rows: crushRows([30, 43, 56]), sign: [11, 30] },
+      ],
+      barrels: [{ seg: 8, rows: [...barrelGroup(160, -1, 4), ...barrelGroup(195, 1, 4)] }],
+      patchSigns: [[0, 225], [4, 90], [8, 400], [12, 72], [14, 175]],
     },
     theme: {
       tex: {
