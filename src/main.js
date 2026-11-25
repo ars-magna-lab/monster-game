@@ -30,6 +30,7 @@ const PLAYER_MSG = {
   fallPit: '¡AL FOSO!', fallWater: '¡COCODRILOS!', waved: '¡ONDA EXPANSIVA!', nitro: '¡NITRO!', jump: '¡SUPERSALTO!',
   tired: '¡NEUMATAZO!', barreled: '¡BARRILAZO!', rocketed: '¡COHETAZO!', rocketWarn: '¡TE SIGUE UN COHETE!',
 };
+const AI_EVEN = 0.6; // cuánto se igualan las velocidades punta de los camiones de la IA (0 = nada, 1 = del todo)
 const ORDINAL = ['PRIMERO', 'SEGUNDO', 'TERCERO', 'CUARTO', 'QUINTO', 'SEXTO'];
 const KEYHINT = { solo: 'ESPACIO', p1: 'Q / ESPACIO', p2: 'INTRO' };
 const $ = (id) => document.getElementById(id);
@@ -901,12 +902,15 @@ class Game {
     sorted.forEach((v, i) => { v.place = i + 1; });
     // "goma elástica": la IA se ajusta al jugador humano que va delante
     const base = (DIFF[this.settings.diff] || DIFF.normal).mul;
+    // la IA va casi siempre a fondo, así que entre sus camiones decidía solo la velocidad punta
+    // (Escorpión siempre último, Megalodón casi siempre primero): se acercan entre sí
+    const avgMax = this.vehicles.reduce((a, v) => a + v.maxSpeed, 0) / this.vehicles.length;
     const racing = this.humans.filter((h) => !h.finished);
     const ref = racing.length ? Math.max(...racing.map((h) => h.progress)) : null;
     for (const v of this.vehicles) {
       if (v.isPlayer) { v.speedMul = 1; continue; }
-      if (ref === null) { v.speedMul = base; continue; }
-      v.speedMul = base * clamp(1 + (ref - v.progress) / 900, 0.92, 1.1);
+      const even = base * (1 + AI_EVEN * (avgMax - v.maxSpeed) / v.maxSpeed);
+      v.speedMul = ref === null ? even : even * clamp(1 + (ref - v.progress) / 900, 0.92, 1.1);
     }
   }
 
@@ -914,7 +918,7 @@ class Game {
     for (const v of this.vehicles) {
       const view = this.viewOf(v);
       const isP = !!view;
-      const shake = (k) => { if (view) view.shake = Math.max(view.shake, k); };
+      const shake = (k) => { if (view) { view.shake = Math.max(view.shake, k); this.input.rumble(view.who, Math.min(1, 0.35 + k * 0.6), 120 + 220 * k); } };
       for (const e of v.events) {
         const near = (name, vol = 1) => (isP ? this.sound.play(name, vol) : this.sound3d(name, v.x, v.z, vol));
         switch (e.type) {
@@ -933,7 +937,7 @@ class Game {
           case 'rocketWarn': if (isP) this.sound.play('wrong'); break;
           case 'net': near('net'); break;
           case 'crush': near('crunch', 0.9); shake(0.3); break;
-          case 'fallPit': case 'fallWater': near('fall', 0.8); break;
+          case 'fallPit': case 'fallWater': near('fall', 0.8); if (view) this.input.rumble(view.who, 1, 400); break;
           case 'splash':
             if (v.fall?.pit?.liquid === 'lava') { near('boom', 0.7); this.fx.explosion(v.x, v.y - 1, v.z); }
             else { near('splash'); this.fx.splash(v.x, v.y + 0.5, v.z); }
@@ -1070,7 +1074,7 @@ class Game {
       for (const v of this.views) {
         const p = v.player;
         const key = v.who === 'p2' ? 'Retroceso' : 'R';
-        v.hud.hint(this.state === 'race' && !p.finished ? (p.wrongT > 1.2 ? '¡DIRECCIÓN CONTRARIA!' : p.stuckT > 2 ? `Pulsa ${key} para volver a la pista` : '') : '');
+        v.hud.hint(this.state === 'race' && !p.finished ? (p.wrongT > 1.2 ? '¡DIRECCIÓN CONTRARIA!' : p.stuckT > 2 ? `Pulsa ${key}${this.input.padList?.length ? ' (o Y en el mando)' : ''} para volver a la pista` : '') : '');
       }
       if (this.state === 'race' && this.allDoneT !== null) {
         this.allDoneT -= dt;
