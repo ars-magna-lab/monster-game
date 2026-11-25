@@ -215,11 +215,33 @@ export const CIRCUITS = [
     },
   },
   {
-    id: 'selva', name: 'Selva Salvaje', short: 'Selva',
-    desc: 'Barro por todas partes, troncos, un río con cocodrilos y un templo.',
-    layout: [S(230), A(75, 65), S(335), A(105, 60), A(-70, 55), A(110, 55), A(-40, 65), S(285), A(80, 65), S(0, { solve: 'X' }), A(100, 70), S(0, { solve: 'Y' })],
-    features: (at, L) => standardFeatures(at, L, { liquid: 'water', extraPatches: [[2, 100, -4], [2, 120, 5], [11, 70, 0], [0, 165, -4]] }),
-    places: STANDARD_PLACES,
+    // Técnico y embarrado: el más corto, curvas enlazadas, río con dos puentes y troncos colgantes
+    id: 'selva', name: 'Selva Salvaje', short: 'Selva', rev: 2,
+    desc: 'Curvas y barro sin parar, troncos colgantes y un río con cocodrilos: ¿qué puente eliges?',
+    //        0       1           2            3            4            5                    6           7       8            9            10           11     12          13     14           15           16           17     18          19
+    layout: [S(170), A(90, 55), A(-60, 55), A(120, 55), A(-60, 55), S(0, { solve: 'X' }), A(90, 55), S(130), A(-60, 55), A(120, 55), A(-60, 55), S(50), A(90, 55), S(50), A(-50, 55), A(100, 55), A(-50, 55), S(50), A(90, 55), S(0, { solve: 'Y' })],
+    features: (at, L) => ({
+      // el río: sin rampa, hay que elegir uno de los dos puentes colgantes
+      pits: [{ name: 'río', s0: at(7, 45), s1: at(7, 87), floor: 1.4, liquid: 'water', bridges: [[-11.5, -6.5], [6.5, 11.5]] }],
+      whoops: [{ a: at(11, 2), b: at(11, 2) + 5 * 9, amp: 0.75, wl: 9 }],
+      mud: [
+        patch(at, 1, 30, -4), patch(at, 1, 58, 5), patch(at, 2, 30, 4), patch(at, 4, 30, -4),
+        patch(at, 8, 30, 3), patch(at, 9, 25, -3), patch(at, 9, 85, 5), patch(at, 10, 30, -4),
+        patch(at, 14, 25, 4), patch(at, 15, 30, -4), patch(at, 15, 70, 4), patch(at, 16, 25, 0),
+      ],
+      tunnel: { s0: at(19, 10), s1: at(19, 95) }, // el templo
+    }),
+    places: {
+      turbos: [[0, 30, -6], [0, 30, 6], [5, 15, 0], [7, 110, 0], [17, 45, 0], [19, 150, -6], [19, 150, 6]],
+      boxes: [[0, 155], [7, 120], [12, 43], [19, 125]],
+      rollers: [{ seg: 0, list: [[95, 4.2, 0], [120, 3.6, 0.45]], sign: [0, 62] }],
+      // troncos colgantes (theme.swing)
+      balls: [{ seg: 3, frac: 0.3, phase: 0 }, { seg: 3, frac: 0.78, phase: Math.PI }, { seg: 9, frac: 0.5, phase: Math.PI / 2 }],
+      nets: [[5, 50], [13, 30]],
+      crush: [{ seg: 17, rows: [[8, CRUSH_A], [21, CRUSH_B]], sign: [16, 10] }],
+      barrels: [{ seg: 19, rows: [...barrelGroup(35, -1), ...barrelGroup(65, 1)] }],
+      patchSigns: [[0, 165], [8, 5], [14, 2]],
+    },
     theme: {
       tex: {
         id: 'selva',
@@ -237,6 +259,7 @@ export const CIRCUITS = [
       mountains: 0x4f7a4a, hills: 0x3f7a35, trees: 'jungle', rocks: 0x6f6c52,
       tunnel: { inner: 0xa89a70, outer: 0x5f8f48 }, crocs: true,
       roller: 'log', crush: 'car', patch: 'mud', patchName: '¡BARRO!', rollerName: '¡TRONCOS!', rollerHit: '¡TRONCO!', dust: [0.6, 0.36, 0.22],
+      swing: 'log', ballHit: '¡TRONCAZO!',
     },
   },
   {
