@@ -138,7 +138,7 @@ export class Obstacles {
         band.rotation.y = Math.PI / 2;
         pivot.add(band);
       }
-      this.balls.push({ s, pivot, phase, period: 3.8, amp: 1.05, L: 15.5, top: 18.4, d: 0, y: 0, vd: 0, len: swingLog ? 2.2 : 0 });
+      this.balls.push({ s, pivot, phase, period: 3.8, amp: 1.05, L: 15.5, top: 18.4, d: 0, y: 0, vd: 0, len: swingLog ? 1.5 : 0 });
     }
 
     // ---------- La red ----------

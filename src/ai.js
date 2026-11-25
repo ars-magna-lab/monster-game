@@ -164,7 +164,8 @@ export class AIDriver {
       return { o, ds, reach: o.len / 2 + 2.6 };
     }).filter((z) => z.ds > -z.reach && z.ds < 80);
     if (!zone.length) { this.rollerTry = null; return null; }
-    if (this.rollerTry == null) this.rollerTry = Math.random() < 0.5 * this.skill;
+    // las bolas grandes (nieve, rocas) se ven venir de lejos: se intenta esquivarlas más a menudo
+    if (this.rollerTry == null) this.rollerTry = Math.random() < 0.5 * this.skill * (zone[0].o.ball ? 1.5 : 1);
     if (!this.rollerTry) return null;
     const sp = Math.max(speed, 10);
     let best = null, bestCost = Infinity;
