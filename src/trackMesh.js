@@ -115,7 +115,7 @@ export function buildTrackMeshes(track, scene) {
   }
 
   // ---------- Fosos ----------
-  let lavaLights = 0;
+  const glows = []; // luces de la lava (en calidad baja se enciende solo la cercana: ver Game.leanLightsFor)
   const pitWallMat = new THREE.MeshStandardMaterial({ map: T.dirtTex(), roughness: 1, side: THREE.DoubleSide, color: 0x9c8a7a });
   for (const p of track.pits) {
     const rows = rowsBetween(track, p.s0, p.s1);
@@ -154,12 +154,13 @@ export function buildTrackMeshes(track, scene) {
         strip(track, rows, () => [[-LIMIT, p.floor], [LIMIT, p.floor]], (s, k, d) => [d / 10, s / 10]),
         mat,
       );
-      if (lava && lavaLights++ < 2) {
+      if (lava && glows.length < 2) {
         // resplandor de la lava (como mucho dos luces por circuito: cada luz encarece todo el dibujo)
         const glow = new THREE.PointLight(0xff6a20, 900, 60, 1.6);
         const M = track.pointAt((p.s0 + p.s1) / 2);
         glow.position.set(M.x, p.top + 4, M.z);
         group.add(glow);
+        glows.push(glow);
       }
       water.userData.animTex = wt;
       group.add(water);
@@ -428,7 +429,7 @@ export function buildTrackMeshes(track, scene) {
 
   splitBigMeshes(group, 3000);
   scene.add(group);
-  return { group, lights, lampMesh };
+  return { group, lights, lampMesh, glows };
 }
 
 function mulberry(seed) {

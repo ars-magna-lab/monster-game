@@ -7,11 +7,12 @@ attribute float psize;
 attribute float palpha;
 attribute vec3 pcolor;
 uniform float scale;
+uniform float maxPx;
 varying float vA;
 varying vec3 vC;
 void main() {
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
-  gl_PointSize = psize * scale / max(0.1, -mv.z);
+  gl_PointSize = min(maxPx, psize * scale / max(0.1, -mv.z));
   gl_Position = projectionMatrix * mv;
   vA = palpha;
   vC = pcolor;
@@ -51,7 +52,7 @@ export class Particles {
     g.setAttribute('psize', new THREE.BufferAttribute(this.size, 1).setUsage(THREE.DynamicDrawUsage));
     g.setAttribute('palpha', new THREE.BufferAttribute(this.alpha, 1).setUsage(THREE.DynamicDrawUsage));
     this.mat = new THREE.ShaderMaterial({
-      uniforms: { map: { value: softDotTex() }, scale: { value: 500 } },
+      uniforms: { map: { value: softDotTex() }, scale: { value: 500 }, maxPx: { value: 4096 } },
       vertexShader: VERT,
       fragmentShader: FRAG,
       transparent: true,
@@ -66,8 +67,10 @@ export class Particles {
     this.alive = 0;
   }
 
-  setScale(viewH, fovDeg) {
+  // maxPx: tamaño máximo de una partícula en píxeles (en calidad baja, una fracción de la vista)
+  setScale(viewH, fovDeg, maxFrac = 0) {
     this.mat.uniforms.scale.value = viewH / (2 * Math.tan((fovDeg * Math.PI) / 360));
+    this.mat.uniforms.maxPx.value = maxFrac ? viewH * maxFrac : 4096;
   }
 
   emit(o) {
@@ -123,9 +126,13 @@ export class FX {
   constructor(scene) {
     this.soft = new Particles(scene, 2200, false);
     this.glow = new Particles(scene, 1200, true);
+    this.cheap = false;
+    this.maxFrac = 0.2;
   }
 
-  setScale(h, fov) { this.soft.setScale(h, fov); this.glow.setScale(h, fov); }
+  // cheap: calidad baja; las partículas muy cerca de la cámara (el polvo del propio camión,
+  // el humo, las explosiones) no pasan de un 20 % del alto de la vista: menos píxeles que pintar
+  setScale(h, fov) { const k = this.cheap ? this.maxFrac : 0; this.soft.setScale(h, fov, k); this.glow.setScale(h, fov, k); }
 
   update(dt) { this.soft.update(dt); this.glow.update(dt); }
 

@@ -55,6 +55,35 @@ export function splitBigMeshes(parent, minTris = 3000, cell = 160) {
   }
 }
 
+// Reparte un InstancedMesh en varios por zonas del mapa (según dónde está cada instancia),
+// para que la cámara descarte las zonas que no ve: uno solo con cientos de árboles
+// repartidos por todo el mapa no se puede recortar y se dibuja siempre entero.
+export function splitInstancedByArea(im, cell = 200) {
+  const n = im.count, a = im.instanceMatrix.array, col = im.instanceColor;
+  const buckets = new Map();
+  for (let i = 0; i < n; i++) {
+    const key = Math.floor(a[i * 16 + 12] / cell) + ',' + Math.floor(a[i * 16 + 14] / cell);
+    let b = buckets.get(key);
+    if (!b) { b = []; buckets.set(key, b); }
+    b.push(i);
+  }
+  if (buckets.size < 2) return [im];
+  const parts = [];
+  for (const list of buckets.values()) {
+    const m = new THREE.InstancedMesh(im.geometry, im.material, list.length);
+    if (col) m.setColorAt(0, new THREE.Color()); // crea el atributo de color
+    list.forEach((i, k) => {
+      m.instanceMatrix.array.set(a.subarray(i * 16, i * 16 + 16), k * 16);
+      if (col) m.instanceColor.array.set(col.array.subarray(i * 3, i * 3 + 3), k * 3);
+    });
+    m.castShadow = im.castShadow; m.receiveShadow = im.receiveShadow;
+    m.renderOrder = im.renderOrder;
+    m.computeBoundingSphere();
+    parts.push(m);
+  }
+  return parts;
+}
+
 // Junta las piezas fijas de un objeto (las que no se mueven por separado) en
 // una malla por material: muchas menos órdenes de dibujo.
 export function mergeStatic(root, keep = new Set()) {
@@ -123,6 +152,19 @@ export function setCheapMaterials(root, on) {
     } else if (o.userData.richMaterial) {
       o.material = o.userData.richMaterial;
       delete o.userData.richMaterial;
+    }
+  });
+}
+
+// Dibujando con el procesador: las texturas eligen un solo nivel de detalle (mipmap) en vez
+// de mezclar dos (un ~7 % menos por fotograma y apenas se nota)
+export function cheapTextureFilter(root) {
+  root.traverse((o) => {
+    if (!o.material) return;
+    for (const m of [].concat(o.material, o.userData.richMaterial || [])) {
+      for (const t of [m.map, m.emissiveMap]) {
+        if (t && t.minFilter === THREE.LinearMipmapLinearFilter) { t.minFilter = THREE.LinearMipmapNearestFilter; t.needsUpdate = true; }
+      }
     }
   });
 }
