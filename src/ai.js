@@ -236,6 +236,7 @@ export class AIDriver {
     // objetos
     let useItem = false;
     if (v.item === 'jump' && this.rocketClose(game)) useItem = true;
+    else if (v.item === 'giant') useItem = true; // el modo gigante, nada más cogerlo
     else if (v.item) {
       this.itemDelay -= dt;
       if (this.itemDelay <= 0) {

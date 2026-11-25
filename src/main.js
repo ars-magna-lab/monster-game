@@ -5,7 +5,7 @@ import { Track, LIMIT } from './track.js';
 import { buildTrackMeshes } from './trackMesh.js';
 import { buildWorld } from './world.js';
 import { TRUCKS, buildTruck, animateTruck } from './trucks.js';
-import { Vehicle, RADIUS } from './vehicle.js';
+import { Vehicle, RADIUS, CRUSH } from './vehicle.js';
 import { AIDriver } from './ai.js';
 import { Obstacles } from './obstacles.js';
 import { Projectiles } from './projectiles.js';
@@ -30,8 +30,12 @@ const PLAYER_MSG = {
   log: '¡TRONCO!', ball: '¡BOLAZO!', boom: '¡BOOM!', net: '¡ATRAPADO EN LA RED!', crush: '¡CRUNCH!',
   fallPit: '¡AL FOSO!', fallWater: '¡COCODRILOS!', waved: '¡ONDA EXPANSIVA!', nitro: '¡NITRO!', jump: '¡SUPERSALTO!',
   tired: '¡NEUMATAZO!', barreled: '¡BARRILAZO!', rocketed: '¡COHETAZO!', rocketWarn: '¡TE SIGUE UN COHETE!',
-  meteor: '¡ROCA DE FUEGO!', car: '¡CUIDADO CON EL TRÁFICO!', superDrift: '¡SUPERDERRAPE!',
+  meteor: '¡ROCA DE FUEGO!', car: '¡CUIDADO CON EL TRÁFICO!', superDrift: '¡SUPERDERRAPE!', giant: '¡MODO GIGANTE!',
+  crushed: '¡TE HAN CHAFADO!', crushTruck: '¡CHAFADO!',
 };
+const CRUSH_START = 3; // segundos de carrera sin chafar (salida)
+// Modo gigante: solo a los últimos, con la carrera ya estirada, y nunca dos a la vez
+const GIANT_ROLL = { last: 0.45, second: 0.15, minTime: 12, minGap: 120, minTrucks: 3 };
 // Colores de las chispas del derrape (y de la barra de carga) por nivel: humo, azul, naranja y morado
 const DRIFT_COLORS = [[0.85, 0.85, 0.85], [0.1, 0.4, 1], [1, 0.4, 0.02], [0.6, 0.1, 1]];
 const AI_EVEN = 0.85; // cuánto se igualan las velocidades punta de los camiones de la IA (0 = nada, 1 = del todo)
@@ -766,7 +770,20 @@ class Game {
     this.last = performance.now();
   }
 
+  // ¿Le toca el modo gigante? Al último un 45 %, al penúltimo un 15 %; hace falta que la carrera
+  // lleve un rato, ir lejos del primero y que no haya otro gigante (ni otro con el objeto en la mano).
+  giantRoll(v) {
+    const n = this.vehicles.length;
+    if (n < GIANT_ROLL.minTrucks || this.raceTime < GIANT_ROLL.minTime) return false;
+    if (this.vehicles.some((o) => o.giant > 0 || o.item === 'giant')) return false;
+    const lead = Math.max(...this.vehicles.map((o) => o.progress));
+    if (lead - v.progress < GIANT_ROLL.minGap) return false;
+    const p = v.place === n ? GIANT_ROLL.last : v.place === n - 1 ? GIANT_ROLL.second : 0;
+    return Math.random() < p;
+  }
+
   rollItem(v) {
+    if (this.giantRoll(v)) return 'giant';
     const t = (v.place - 1) / Math.max(1, this.vehicles.length - 1);
     // los de atrás reciben objetos más fuertes; el cohete nunca le toca al primero
     const w = {
@@ -1111,10 +1128,25 @@ class Game {
         const d = Math.sqrt(d2) || 0.01;
         const nx = dx / d, nz = dz / d;
         const over = R2 - d;
-        const ma = a.mass, mb = b.mass;
+        // el gigante apenas se deja empujar
+        const ma = a.mass * (a.giant > 0 ? 4 : 1), mb = b.mass * (b.giant > 0 ? 4 : 1);
         a.x -= nx * over * (mb / (ma + mb)); a.z -= nz * over * (mb / (ma + mb));
         b.x += nx * over * (ma / (ma + mb)); b.z += nz * over * (ma / (ma + mb));
         const vn = (b.vx - a.vx) * nx + (b.vz - a.vz) * nz;
+        const cr = this.crushPair(a, b, nx, nz, d / R2);
+        if (cr && cr.small.crush(cr.big, cr.dur)) {
+          // el que chafa sigue casi igual; el chafado se queda donde está, casi parado
+          cr.big.vx *= 0.95; cr.big.vz *= 0.95;
+          cr.small.vx *= 0.2; cr.small.vz *= 0.2;
+          if (cr.fall) { cr.big.vy = Math.max(cr.big.vy, 7); cr.big.onGround = false; } // rebota en el techo
+          const sm = cr.small;
+          this.fx.sparks(sm.x, sm.y + 1.5 * sm.size, sm.z, 10);
+          for (let k = 0; k < 10; k++) {
+            const an = (k / 10) * Math.PI * 2;
+            this.fx.dust(sm.x + Math.cos(an) * 2 * sm.size, sm.y, sm.z + Math.sin(an) * 2 * sm.size, Math.cos(an) * 14, Math.sin(an) * 14, undefined, 1, 2);
+          }
+          continue;
+        }
         if (vn < 0) {
           const jimp = (-1.4 * vn) / (1 / ma + 1 / mb);
           a.vx -= (jimp * nx) / ma; a.vz -= (jimp * nz) / ma;
@@ -1131,6 +1163,15 @@ class Game {
         }
       }
     }
+  }
+
+  // ¿Chafa uno al otro en este contacto? Devuelve { big, small, dur } o null. n: de a hacia b.
+  crushPair(a, b, nx, nz, near) {
+    if (this.raceTime < CRUSH_START) return null; // en la parrilla van pegados
+    // el gigante chafa a cualquiera que toque
+    if (a.giant > 0 && b.crushable) return { big: a, small: b, dur: CRUSH.max };
+    if (b.giant > 0 && a.crushable) return { big: b, small: a, dur: CRUSH.max };
+    return null;
   }
 
   rank() {
@@ -1180,6 +1221,10 @@ class Game {
           case 'rocketWarn': if (isP) this.sound.play('wrong'); break;
           case 'net': near('net'); break;
           case 'crush': near('crunch', 0.9); shake(0.3); break;
+          case 'giant': near('giant', 0.8); if (view) this.input.rumble(view.who, 0.6, 400); break;
+          case 'stomp': near('stomp', 0.35); if (view) this.input.rumble(view.who, 0.15, 60); break;
+          case 'crushTruck': near('crunch', 0.8); shake(0.25); break;
+          case 'crushed': near('crunch', 0.9); near('bump', 0.6); shake(0.6); break;
           case 'fallPit': case 'fallWater': near('fall', 0.8); if (view) this.input.rumble(view.who, 1, 400); break;
           case 'splash':
             if (v.fall?.pit?.liquid === 'lava') { near('boom', 0.7); this.fx.explosion(v.x, v.y - 1, v.z); }
@@ -1202,7 +1247,7 @@ class Game {
         }
         const msg = e.type === 'driftBoost' ? (e.level === 3 ? PLAYER_MSG.superDrift : null) : e.type === 'fallWater' ? pitText(this.track.theme, e.liquid) : e.type === 'log' ? this.track.theme.rollerHit : e.type === 'ball' ? this.track.theme.ballHit || PLAYER_MSG.ball : PLAYER_MSG[e.type];
         if (view && msg) {
-          const big = ['fallPit', 'fallWater', 'net', 'ball', 'boom', 'rocketWarn', 'meteor', 'car'].includes(e.type);
+          const big = ['fallPit', 'fallWater', 'net', 'ball', 'boom', 'rocketWarn', 'meteor', 'car', 'giant', 'crushed'].includes(e.type);
           view.hud.message(msg, big ? 1.6 : 1.0, big ? 'warn' : '');
         }
       }
@@ -1734,7 +1779,8 @@ class Game {
     const portrait = cam.aspect < 1;
     const sp = Math.abs(p.vF);
     const wide = cam.aspect > 2.6; // media pantalla apaisada: un poco más de altura
-    const big = 0.55 + 0.45 * p.size; // los camiones grandes llevan la cámara algo más lejos
+    // los camiones grandes llevan la cámara algo más lejos; el gigante, un poco más todavía
+    const big = (0.55 + 0.45 * p.size) * (1 + 0.15 * p.giantK);
     const dist = (10.5 + clamp(sp * 0.07, 0, 3.2)) * (portrait ? 1.55 : 1) * big;
     const height = (4.4 + clamp(sp * 0.02, 0, 0.8)) * (portrait ? 1.35 : wide ? 0.9 : 1) * big;
     const baseY = p.state === 'fallen' && p.fall ? Math.max(p.y, p.fall.pit.top - 1) : p.y;
