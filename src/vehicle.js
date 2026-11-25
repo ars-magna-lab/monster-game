@@ -507,7 +507,7 @@ export class Vehicle {
     if (this.hopT > 0) this.hopT = Math.max(0, this.hopT - dt);
     const hop = this.hopT > 0 ? Math.sin(Math.PI * (1 - this.hopT / DRIFT.hop)) * 0.5 * this.size : 0;
     // caballito: gira sobre el eje trasero, que sigue en el suelo (la física no cambia)
-    this.wheelieK += ((this.wheelie || 0) - this.wheelieK) * Math.min(1, dt * 7);
+    this.wheelieK = (this.wheelieK || 0) + ((this.wheelie || 0) - (this.wheelieK || 0)) * Math.min(1, dt * 7);
     const wa = this.wheelieK * WHEELIE_ANG, rz = WHEEL_Z * this.size;
     const back = rz * (1 - Math.cos(wa));
     m.position.set(this.x - Math.cos(this.th) * back, this.y + hop + rz * Math.sin(wa), this.z - Math.sin(this.th) * back);
