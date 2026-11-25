@@ -22,7 +22,7 @@ function standardFeatures(at, LIMIT, o = {}) {
     ],
     pits: [
       { name: 'foso', s0: at(2, 196), s1: at(2, 214), floor: o.bigPitLiquid ? 1.4 : 0, liquid: o.bigPitLiquid || null },
-      { name: 'puente', s0: at(9, 206), s1: at(9, 228), floor: 1.4, liquid: o.liquid || 'water', bridge: [6.5, 11.5] },
+      { name: 'puente', s0: at(9, 206), s1: at(9, 228), floor: 1.4, liquid: o.liquid || 'water', bridges: [[6.5, 11.5]] },
     ],
     mud: [
       { s: at(9, 18), d: -5, rs: 9, rd: 5 },
@@ -34,17 +34,36 @@ function standardFeatures(at, LIMIT, o = {}) {
   };
 }
 
-// Dónde va cada obstáculo (tramo, metros)
+// Dónde va cada obstáculo (tramo, metros). Todas las listas admiten cualquier número de elementos:
+//   turbos [[tramo, m, d]], boxes [[tramo, m]], rollers [{ seg, list: [[m, periodo, fase]], sign }],
+//   balls [{ seg, frac | rel, phase }], nets [[tramo, m]], crush [{ seg, rows: [[m, [d…]]], sign }],
+//   barrels [{ seg, rows: [[m, [d…]]] }], patchSigns [[tramo, m]].
 const STANDARD_PLACES = {
   turbos: [[0, 50, -6], [0, 50, 6], [2, 166, -5], [2, 166, 5], [7, 150, -5], [7, 150, 5], [9, 178, -5], [11, 120, 0]],
   boxes: [[0, 185], [2, 250], [7, 90], [9, 300], [11, 100]],
-  rollers: { seg: 2, list: [[35, 4.2, 0], [60, 3.6, 0.45], [85, 4.8, 0.2]], sign: [2, 5] },
-  balls: { seg: 5, at: [0.25, 0.8] },
-  net: [11, 45],
-  crush: { seg: 0, rows: [[100, [-8, -3, 2, 7]], [113, [-5.5, -0.5, 4.5, 9]], [126, [-8, -3, 2, 7]], [139, [-5.5, -0.5, 4.5, 9]]], sign: [0, 80] },
-  barrels: { seg: 7, rows: [[190, [-8, -2, 4, 10]], [206, [-5, 1, 7]], [222, [-9, -2, 5]]] },
-  patchSign: [9, 2],
+  rollers: [{ seg: 2, list: [[35, 4.2, 0], [60, 3.6, 0.45], [85, 4.8, 0.2]], sign: [2, 5] }],
+  balls: [{ seg: 5, frac: 0.25, phase: 0 }, { seg: 5, frac: 0.8, phase: Math.PI }],
+  nets: [[11, 45]],
+  crush: [{ seg: 0, rows: [[100, [-8, -3, 2, 7]], [113, [-5.5, -0.5, 4.5, 9]], [126, [-8, -3, 2, 7]], [139, [-5.5, -0.5, 4.5, 9]]], sign: [0, 80] }],
+  barrels: [{ seg: 7, rows: [[190, [-8, -2, 4, 10]], [206, [-5, 1, 7]], [222, [-9, -2, 5]]] }],
+  patchSigns: [[9, 2]],
 };
+
+// Acepta también la forma antigua (un solo elemento en vez de lista)
+export function normPlaces(P) {
+  const list = (x) => (x == null ? [] : Array.isArray(x) ? x : [x]);
+  return {
+    turbos: P.turbos || [],
+    boxes: P.boxes || [],
+    rollers: list(P.rollers),
+    balls: Array.isArray(P.balls) ? P.balls
+      : P.balls ? P.balls.at.map((frac, i) => ({ seg: P.balls.seg, frac, phase: i % 2 ? Math.PI : 0 })) : [],
+    nets: P.nets || (P.net ? [P.net] : []),
+    crush: list(P.crush),
+    barrels: list(P.barrels),
+    patchSigns: P.patchSigns || (P.patchSign ? [P.patchSign] : []),
+  };
+}
 
 export const CIRCUITS = [
   {
@@ -146,10 +165,10 @@ export const CIRCUITS = [
     features: (at, L) => standardFeatures(at, L, { liquid: 'water', extraPatches: [[9, 400, 4], [9, 480, -4], [11, 200, 0]] }),
     places: {
       ...STANDARD_PLACES,
-      crush: {
+      crush: [{
         seg: 0, sign: [0, 80],
         rows: [[100, [-8, -3, 2, 7]], [113, [-5.5, -0.5, 4.5, 9]], [126, [-8, -3, 2, 7]], [139, [-5.5, -0.5, 4.5, 9]], [152, [-8, -3, 2, 7]], [165, [-5.5, -0.5, 4.5, 9]]],
-      },
+      }],
       turbos: [...STANDARD_PLACES.turbos, [9, 450, 0], [9, 560, -5], [9, 560, 5]],
       boxes: [...STANDARD_PLACES.boxes, [9, 520]],
     },
