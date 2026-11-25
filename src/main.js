@@ -30,8 +30,10 @@ const PLAYER_MSG = {
   log: '¡TRONCO!', ball: '¡BOLAZO!', boom: '¡BOOM!', net: '¡ATRAPADO EN LA RED!', crush: '¡CRUNCH!',
   fallPit: '¡AL FOSO!', fallWater: '¡COCODRILOS!', waved: '¡ONDA EXPANSIVA!', nitro: '¡NITRO!', jump: '¡SUPERSALTO!',
   tired: '¡NEUMATAZO!', barreled: '¡BARRILAZO!', rocketed: '¡COHETAZO!', rocketWarn: '¡TE SIGUE UN COHETE!',
-  meteor: '¡ROCA DE FUEGO!', car: '¡CUIDADO CON EL TRÁFICO!',
+  meteor: '¡ROCA DE FUEGO!', car: '¡CUIDADO CON EL TRÁFICO!', superDrift: '¡SUPERDERRAPE!',
 };
+// Colores de las chispas del derrape (y de la barra de carga) por nivel: humo, azul, naranja y morado
+const DRIFT_COLORS = [[0.85, 0.85, 0.85], [0.1, 0.4, 1], [1, 0.4, 0.02], [0.6, 0.1, 1]];
 const AI_EVEN = 0.85; // cuánto se igualan las velocidades punta de los camiones de la IA (0 = nada, 1 = del todo)
 const ORDINAL = ['PRIMERO', 'SEGUNDO', 'TERCERO', 'CUARTO', 'QUINTO', 'SEXTO'];
 const KEYHINT = { solo: 'ESPACIO', p1: 'Q / ESPACIO', p2: 'INTRO' };
@@ -522,7 +524,7 @@ class Game {
     $('select-who').textContent = this.selectStep === 1 ? 'JUGADOR 2' : 'JUGADOR 1';
     $('opt-screen2').classList.toggle('hidden', !two);
     $('select-keys').classList.toggle('hidden', !two);
-    $('select-keys').textContent = 'J1: W A S D, objeto Q · J2: flechas, objeto Intro · o un mando para cada uno';
+    $('select-keys').textContent = 'J1: W A S D, derrapar Mayús izq., objeto Q · J2: flechas, derrapar Mayús der., objeto Intro · o un mando para cada uno';
     $('btn-start').textContent = two && this.selectStep === 0 ? 'SIGUIENTE' : '¡A CORRER!';
     $('truck-name').textContent = def.name;
     $('truck-name').style.color = hex(def.color);
@@ -1195,8 +1197,10 @@ class Game {
             break;
           case 'scrape': near('scrape', clamp(e.v / 12, 0.2, 0.8)); this.fx.sparks(v.x, v.y + 1.2, v.z, 4); break;
           case 'wall': near('bump', 0.6); break;
+          case 'driftLevel': if (view) { this.sound.play('drift' + e.level, 0.8); this.input.rumble(view.who, 0.2 + 0.12 * e.level, 90); } break;
+          case 'driftBoost': if (isP) this.sound.play('turbo', 0.55 + 0.1 * e.level); break;
         }
-        const msg = e.type === 'fallWater' ? pitText(this.track.theme, e.liquid) : e.type === 'log' ? this.track.theme.rollerHit : e.type === 'ball' ? this.track.theme.ballHit || PLAYER_MSG.ball : PLAYER_MSG[e.type];
+        const msg = e.type === 'driftBoost' ? (e.level === 3 ? PLAYER_MSG.superDrift : null) : e.type === 'fallWater' ? pitText(this.track.theme, e.liquid) : e.type === 'log' ? this.track.theme.rollerHit : e.type === 'ball' ? this.track.theme.ballHit || PLAYER_MSG.ball : PLAYER_MSG[e.type];
         if (view && msg) {
           const big = ['fallPit', 'fallWater', 'net', 'ball', 'boom', 'rocketWarn', 'meteor', 'car'].includes(e.type);
           view.hud.message(msg, big ? 1.6 : 1.0, big ? 'warn' : '');
@@ -1343,7 +1347,7 @@ class Game {
       const rate = pc.analog ? 40 : pc.steer === 0 ? 10 : Math.sign(pc.steer) !== Math.sign(view.steerSmooth) ? 9 : 6;
       view.steerSmooth += (pc.steer - view.steerSmooth) * Math.min(1, dt * rate);
       if (Math.abs(view.steerSmooth) < 0.01 && pc.steer === 0) view.steerSmooth = 0;
-      return { steer: view.steerSmooth, throttle: pc.throttle, brake: pc.brake, item: pc.item, reset: pc.reset };
+      return { steer: view.steerSmooth, throttle: pc.throttle, brake: pc.brake, item: pc.item, reset: pc.reset, drift: pc.drift };
     });
   }
 
@@ -1403,6 +1407,8 @@ class Game {
       if (best.stall > 0 && i >= 0) { thr = 0; rev = Math.random() < 0.25 ? 0.25 : -0.3; }
       this.sound.engineUpdate(Math.abs(best.vF) / best.maxSpeed + rev, thr, best.boost > 0 && i >= 0, !best.onGround);
     }
+    // chirrido de neumáticos mientras algún jugador derrapa (se apaga en pausa y en los menús)
+    this.sound.skid(this.state === 'race' || this.state === 'finished' ? Math.max(0, ...this.humans.map((h) => (h.drift && h.onGround ? 1 : 0))) : 0);
 
     this.updateRings(dt);
     this.flash.intensity *= Math.exp(-dt * 8);
@@ -1565,12 +1571,28 @@ class Game {
           else this.fx.dust(bx, v.y, bz, v.vx, v.vz, v.surf === 'grass' ? [0.45, 0.55, 0.3] : undefined, 1, 2);
         }
       }
+      if (v.drift && v.onGround) this.driftFx(v, dt);
       if (v.boost > 0) {
         const bx = v.x - Math.cos(v.th) * 2.6, bz = v.z - Math.sin(v.th) * 2.6;
         for (const side of [-0.85, 0.85]) {
           const ex = bx - Math.sin(v.th) * side, ez = bz + Math.cos(v.th) * side;
           this.fx.boostFlame(ex, v.y + 3.6, ez, -Math.cos(v.th) * 10, -Math.sin(v.th) * 10);
         }
+      }
+    }
+  }
+
+  // Derrape: chispas del color del nivel en las dos ruedas traseras (humo claro antes del nivel 1)
+  driftFx(v, dt) {
+    const lv = v.drift.level;
+    const th = v.th + v.driftYaw; // la carrocería se dibuja girada
+    const fx = Math.cos(th), fz = Math.sin(th), sz = v.size;
+    const rate = (lv ? 32 : 14) * (this.fx.cheap ? 0.5 : 1) * dt; // partículas por rueda y fotograma
+    for (const side of [-1.5, 1.5]) {
+      const x = v.x - fx * 1.9 * sz - fz * side * sz, z = v.z - fz * 1.9 * sz + fx * side * sz;
+      for (let i = 0; i < 3 && Math.random() < rate - i; i++) {
+        if (lv) this.fx.driftSpark(x, v.y + 0.3, z, v.vx, v.vz, DRIFT_COLORS[lv], lv);
+        else this.fx.smoke(x, v.y, z, -fx * 3, -fz * 3, 0, 0.9 * sz);
       }
     }
   }

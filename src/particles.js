@@ -210,6 +210,15 @@ export class FX {
     });
   }
 
+  // chispas del derrape: pequeñas, salen hacia atrás y hacia arriba; más vivas cuanto mayor el nivel
+  driftSpark(x, y, z, vx, vz, color, level = 1) {
+    this.glow.emit({
+      x: x + (Math.random() - 0.5) * 0.5, y, z: z + (Math.random() - 0.5) * 0.5,
+      vx: vx * 0.55 + (Math.random() - 0.5) * 6, vy: 2 + Math.random() * 4, vz: vz * 0.55 + (Math.random() - 0.5) * 6,
+      life: 0.22 + Math.random() * 0.2, size: 0.5 + 0.15 * level, grow: -0.4, color, alpha: 1, gravity: 16, drag: 2,
+    });
+  }
+
   boostFlame(x, y, z, vx, vz) {
     this.glow.emit({
       x, y, z, vx: vx * 0.6 + (Math.random() - 0.5) * 2, vy: 1.5 + Math.random(), vz: vz * 0.6 + (Math.random() - 0.5) * 2,

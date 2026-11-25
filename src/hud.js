@@ -1,5 +1,9 @@
 // Interfaz durante la carrera: posición, vueltas, tiempos, objeto, velocidad y minimapa.
 import * as THREE from 'three';
+import { DRIFT } from './vehicle.js';
+
+// Color de la barra mientras se carga el derrape: humo, azul, naranja y morado
+const BAR_COLORS = ['#cfd6dc', '#3aa2ff', '#ff9a1f', '#b84dff'];
 
 export const ITEM_SVG = {
   nitro: `<svg viewBox="0 0 64 64"><path d="M26 8h12v6h-12z" fill="#ddd"/><rect x="20" y="14" width="24" height="40" rx="7" fill="#1f8fff" stroke="#fff" stroke-width="3"/><path d="M32 22c5 6 7 10 3 16-1-4-3-5-5-6 1 4-2 7-4 9-2-6 0-12 6-19z" fill="#ffd400"/></svg>`,
@@ -193,7 +197,11 @@ export class HUD {
     const best = p.lapTimes.length ? Math.min(...p.lapTimes) : Infinity;
     this.set('best', this.el.best, isFinite(best) ? 'Mejor vuelta ' + fmtTime(best) : '');
     this.set('speed', this.el.speed, String(Math.round(Math.abs(p.vF) * 3.6)));
-    this.el.boost.style.width = Math.min(100, (p.boost / 2.2) * 100) + '%';
+    // barra: mientras se derrapa enseña la carga (llena = nivel 3) con el color del nivel; si no, el turbo
+    const bar = p.drift ? 'drift' + p.drift.level : '';
+    if (bar !== this.barMode) { this.barMode = bar; this.el.boost.style.background = bar ? BAR_COLORS[p.drift.level] : ''; }
+    const fill = p.drift ? p.drift.t / DRIFT.levels[2] : p.boost / 2.2;
+    this.el.boost.style.width = Math.min(100, fill * 100) + '%';
 
     // objeto (con ruleta)
     if (p.itemRoll > 0) {

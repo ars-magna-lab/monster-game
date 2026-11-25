@@ -8,6 +8,24 @@ export const RADIUS = 2.3; // para choques entre camiones
 
 const SURF_SPEED = { road: 1, ramp: 1, bridge: 0.92, grass: 0.74, mud: 0.5, ice: 1, pit: 1, water: 1 };
 
+// Derrape con turbo (como en los juegos de karts). Se mantiene el botón de derrapar girando:
+// la carga sube y, al soltar, da un turbo mayor cuanto más se haya derrapado.
+export const DRIFT = {
+  minSpeed: 0.45,   // fracción de la velocidad punta para empezar
+  minSteer: 0.3,    // giro mínimo para empezar (fija el lado)
+  keepSpeed: 0.3,   // por debajo de esta fracción se cancela
+  maxAir: 0.35,     // segundos en el aire antes de cancelar
+  steerOpen: 0.45,  // dirección efectiva con el stick en contra (curva abierta)
+  steerMid: 0.85,   // con el stick suelto
+  steerTight: 1.25, // con el stick a favor (más cerrado que el giro normal)
+  grip: 0.45,       // agarre lateral durante el derrape
+  keep: 0.9,        // parte de la velocidad lateral que se recupera hacia delante
+  yaw: 18 * Math.PI / 180, // giro visual de la carrocería hacia dentro
+  levels: [0.8, 1.7, 2.8], // carga de cada nivel (chispas azules, naranjas y moradas)
+  boost: [0, 0.7, 1.2, 1.9], // segundos de turbo al soltar según el nivel
+  hop: 0.25,        // duración del saltito visual al empezar
+};
+
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const wrapAng = (a) => {
   while (a > Math.PI) a -= 2 * Math.PI;
@@ -53,6 +71,8 @@ export class Vehicle {
     this.vF = 0; this.accelVis = 0; this.steerVis = 0; this.lastSlopeV = 0;
     this.netCaught = null;
     this.cool = {};
+    // derrape: { side: -1 | 1, t: carga, level: 0..3 } mientras dura; driftYaw y hopT son solo visuales
+    this.drift = null; this.driftYaw = 0; this.hopT = 0; this.driftLock = false;
   }
 
   get speed() { return Math.hypot(this.vx, this.vz); }
@@ -70,6 +90,7 @@ export class Vehicle {
     this.onGround = true; this.wasGround = true;
     this.state = 'ok'; this.stun = 0; this.spinDur = 0; this.spin = 0;
     this.pitch = 0; this.roll = 0;
+    this.drift = null; this.driftYaw = 0; this.hopT = 0; this.driftLock = false;
     this.syncMesh(0);
   }
 
@@ -95,6 +116,7 @@ export class Vehicle {
       this.spinDur = this.stun; this.spinT = 0;
     }
     this.hitCool = 0.9;
+    if (this.drift) { this.endDrift(false); this.driftLock = true; } // un golpe corta el derrape sin turbo
     this.events.push({ type: kind });
     return true;
   }
@@ -155,8 +177,8 @@ export class Vehicle {
     const stunned = this.stun > 0 || this.state === 'caught';
     let fx = Math.cos(this.th), fz = Math.sin(this.th);
     let vF = this.vx * fx + this.vz * fz;
-    const steer = stunned ? 0 : ctrl.steer;
-    this.steerVis += (steer - this.steerVis) * Math.min(1, dt * 10);
+    const steer = this.updateDrift(dt, ctrl, vF, stunned);
+    this.steerVis += ((stunned ? 0 : ctrl.steer) - this.steerVis) * Math.min(1, dt * 10);
     if (this.onGround) {
       const spdF = clamp(Math.abs(vF) / 9, 0, 1);
       const hi = clamp(Math.abs(vF) / this.maxSpeed, 0, 1.3);
@@ -189,8 +211,15 @@ export class Vehicle {
         const fr = (2.5 + Math.abs(vF) * 0.04 + (stunned ? 8 : 0)) * dt;
         vF = Math.abs(vF) <= fr ? 0 : vF - Math.sign(vF) * fr;
       }
-      const grip = this.grip * (this.surf === 'mud' ? 0.35 : this.surf === 'ice' ? 0.1 : 1) * (stunned ? 0.35 : 1);
+      const grip = this.grip * (this.surf === 'mud' ? 0.35 : this.surf === 'ice' ? 0.1 : 1) * (stunned ? 0.35 : 1) * (this.drift ? DRIFT.grip : 1);
+      const vL0 = vL;
       vL *= Math.exp(-grip * dt);
+      // derrapando, lo que la trasera pierde de lado se convierte casi todo en velocidad hacia
+      // delante (sin pasar de la punta): derrapar no frena
+      if (this.drift && vF > 0 && vF < maxV) {
+        const lost = Math.hypot(vF, vL0) - Math.hypot(vF, vL);
+        vF = Math.min(maxV, vF + lost * DRIFT.keep);
+      }
     } else {
       vF *= Math.exp(-0.05 * dt);
     }
@@ -279,6 +308,7 @@ export class Vehicle {
     // ¿se ha caído al foso?
     if ((surf.type === 'pit' || surf.type === 'water') && this.y < surf.top - 1.4) {
       this.state = 'fallen';
+      this.endDrift(false); this.driftLock = true;
       this.stateTimer = surf.type === 'water' ? 2.1 : 1.7;
       this.fall = { pit: surf.pit, water: surf.type === 'water', floor: surf.h, splashed: false };
       this.events.push({ type: surf.type === 'water' ? 'fallWater' : 'fallPit', liquid: surf.pit?.liquid });
@@ -286,6 +316,45 @@ export class Vehicle {
 
     this.updateLap(game);
     this.updateMisc(dt, tr, p);
+  }
+
+  // Lleva el derrape y devuelve la dirección que se usa para girar este paso
+  updateDrift(dt, ctrl, vF, stunned) {
+    const steerIn = stunned ? 0 : ctrl.steer;
+    const top = this.maxSpeed * this.speedMul;
+    let d = this.drift;
+    if (!ctrl.drift) this.driftLock = false;
+    if (d) {
+      const cancel = stunned || this.state !== 'ok' || this.stall > 0 || this.airT > DRIFT.maxAir || (ctrl.brake || 0) > 0.1 || vF < DRIFT.keepSpeed * top;
+      if (cancel) { this.endDrift(false); this.driftLock = true; } // tras cancelarse hay que soltar y volver a pulsar
+      else if (!ctrl.drift) this.endDrift(true);
+    } else if (ctrl.drift && !this.driftLock && !((ctrl.brake || 0) > 0.1) && this.onGround && this.state === 'ok' && !stunned && this.stall <= 0 &&
+      vF >= DRIFT.minSpeed * top && Math.abs(steerIn) >= DRIFT.minSteer) {
+      // empieza: el lado queda fijado hacia donde se gira; si no se gira, queda armado
+      this.drift = { side: Math.sign(steerIn), t: 0, level: 0 };
+      this.hopT = DRIFT.hop;
+      this.events.push({ type: 'driftStart', side: this.drift.side });
+    }
+    d = this.drift;
+    if (!d) return steerIn;
+    // a favor (1) cierra la curva, en contra (-1) la abre; siempre hacia el lado fijado
+    const a = clamp(steerIn * d.side, -1, 1);
+    const eff = a < 0 ? DRIFT.steerMid + (DRIFT.steerOpen - DRIFT.steerMid) * -a : DRIFT.steerMid + (DRIFT.steerTight - DRIFT.steerMid) * a;
+    d.t += dt * (0.7 + 0.6 * Math.max(0, a));
+    const lv = d.t >= DRIFT.levels[2] ? 3 : d.t >= DRIFT.levels[1] ? 2 : d.t >= DRIFT.levels[0] ? 1 : 0;
+    if (lv > d.level) { d.level = lv; this.events.push({ type: 'driftLevel', level: lv }); }
+    return d.side * eff;
+  }
+
+  // Termina el derrape; release: se ha soltado el botón (con nivel da turbo), si no se cancela
+  endDrift(release) {
+    const d = this.drift;
+    if (!d) return;
+    this.drift = null;
+    if (release && d.level >= 1) {
+      this.boost = Math.max(this.boost, DRIFT.boost[d.level]);
+      this.events.push({ type: 'driftBoost', level: d.level });
+    }
   }
 
   updateFallen(dt) {
@@ -357,9 +426,14 @@ export class Vehicle {
 
   syncMesh(dt) {
     const m = this.mesh;
-    m.position.set(this.x, this.y, this.z);
+    // derrape (solo visual): la carrocería gira hacia dentro de la curva y da un saltito al empezar
+    const yawT = this.drift ? this.drift.side * DRIFT.yaw : 0;
+    this.driftYaw += (yawT - this.driftYaw) * Math.min(1, dt / 0.15 * 2.5);
+    if (this.hopT > 0) this.hopT = Math.max(0, this.hopT - dt);
+    const hop = this.hopT > 0 ? Math.sin(Math.PI * (1 - this.hopT / DRIFT.hop)) * 0.5 * this.size : 0;
+    m.position.set(this.x, this.y + hop, this.z);
     m.rotation.order = 'YXZ';
-    m.rotation.set(-this.pitch, Math.PI / 2 - this.th + this.spin, this.roll);
+    m.rotation.set(-this.pitch, Math.PI / 2 - this.th - this.driftYaw + this.spin, this.roll);
     // parpadea solo al reaparecer o al salir de la red; el supersalto protege sin parpadear
     const blink = this.blink > 0 && this.state === 'ok' ? Math.floor(this.blink * 12) % 2 === 0 : true;
     m.visible = blink;

@@ -1,22 +1,24 @@
 // Teclado, mandos y botones táctiles, para uno o dos jugadores.
 //
-// Un jugador: flechas o WASD; Espacio/Mayús/E usa el objeto; cualquier mando.
+// Un jugador: flechas o WASD; Mayús (mantenida) derrapa; Espacio/E usa el objeto; cualquier mando.
 // Dos jugadores:
-//   J1: W A S D, objeto Q o Espacio, volver a la pista R, y el primer mando.
-//   J2: flechas, objeto Intro o Mayús derecha, volver a la pista Retroceso, y el segundo mando.
+//   J1: W A S D, derrapar Mayús izquierda, objeto Q, Espacio o E, volver a la pista R, y el primer mando.
+//   J2: flechas, derrapar Mayús derecha, objeto Intro, Control derecho o 0 del teclado numérico,
+//       volver a la pista Retroceso, y el segundo mando.
+// Mando: RB (la R en los de Switch) mantenido derrapa; el objeto va en X y LB.
 
 const KEYMAP = {
   solo: {
     left: ['ArrowLeft', 'KeyA'], right: ['ArrowRight', 'KeyD'], gas: ['ArrowUp', 'KeyW'], brake: ['ArrowDown', 'KeyS'],
-    item: ['Space', 'ShiftLeft', 'ShiftRight', 'KeyE'], reset: ['KeyR'],
+    item: ['Space', 'KeyE'], drift: ['ShiftLeft', 'ShiftRight'], reset: ['KeyR'],
   },
   p1: {
     left: ['KeyA'], right: ['KeyD'], gas: ['KeyW'], brake: ['KeyS'],
-    item: ['KeyQ', 'Space', 'ShiftLeft', 'KeyE'], reset: ['KeyR'],
+    item: ['KeyQ', 'Space', 'KeyE'], drift: ['ShiftLeft'], reset: ['KeyR'],
   },
   p2: {
     left: ['ArrowLeft'], right: ['ArrowRight'], gas: ['ArrowUp'], brake: ['ArrowDown'],
-    item: ['Enter', 'NumpadEnter', 'ShiftRight', 'ControlRight', 'Numpad0'], reset: ['Backspace', 'NumpadDecimal'],
+    item: ['Enter', 'NumpadEnter', 'ControlRight', 'Numpad0'], drift: ['ShiftRight'], reset: ['Backspace', 'NumpadDecimal'],
   },
 };
 
@@ -212,6 +214,7 @@ export class Input {
     const any = (codes) => codes.some((c) => k.has(c));
     const isP1 = who !== 'p2';
     let steer = 0, throttle = 0, brake = 0, analog = false;
+    let drift = any(map.drift);
     if (any(map.left) || (isP1 && this.touch.left)) steer -= 1;
     if (any(map.right) || (isP1 && this.touch.right)) steer += 1;
     if (any(map.gas) || (isP1 && this.touch.gas)) throttle = 1;
@@ -231,10 +234,12 @@ export class Input {
       const lt = p.buttons[6]?.value || 0;
       if (lt > 0.05) brake = Math.max(brake, lt);
       if (p.buttons[1]?.pressed) brake = 1;
+      if (p.buttons[5]?.pressed) drift = true; // RB mantenido: derrapar
     }
-    const padCodes = who === 'solo' ? ['PadX', 'PadRB', 'PadLB'] : ['PadX@' + slot, 'PadRB@' + slot, 'PadLB@' + slot];
+    const padCodes = who === 'solo' ? ['PadX', 'PadLB'] : ['PadX@' + slot, 'PadLB@' + slot];
     const item = this.pressed(...map.item, ...padCodes, ...(isP1 ? ['TouchItem'] : []));
     const reset = this.pressed(...map.reset, who === 'solo' ? 'PadY' : 'PadY@' + slot);
-    return { steer, throttle, brake, item, reset, analog }; // analog: la dirección viene del stick
+    // analog: la dirección viene del stick; drift: botón de derrapar mantenido (no es un flanco)
+    return { steer, throttle, brake, item, reset, analog, drift };
   }
 }

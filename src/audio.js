@@ -154,6 +154,10 @@ export class Sound {
         this.noiseBurst(1.0, 0.7 * v, 'bandpass', 400, 3000, 2);
         this.osc('sawtooth', 110, 330, 0.8, 0.12 * v);
         break;
+      // derrape: una nota corta y más aguda en cada nivel
+      case 'drift1': this.osc('triangle', 880, 880, 0.1, 0.16 * v); break;
+      case 'drift2': this.osc('triangle', 1175, 1175, 0.1, 0.16 * v); break;
+      case 'drift3': this.osc('triangle', 1568, 1568, 0.14, 0.16 * v); this.osc('triangle', 2093, 2093, 0.1, 0.08 * v, 0.05); break;
       case 'turbo': this.noiseBurst(0.5, 0.45 * v, 'bandpass', 600, 2400, 2); break;
       case 'wave':
         this.osc('sine', 700, 60, 0.7, 0.6 * v);
@@ -219,6 +223,28 @@ export class Sound {
     this.engine.o3.frequency.setTargetAtTime(base * 1.01 + 2, t, 0.06);
     this.engine.f.frequency.setTargetAtTime(300 + r * 900 + throttle * 500, t, 0.08);
     this.engine.g.gain.setTargetAtTime(this.muted ? 0 : 0.07 + throttle * 0.05, t, 0.1);
+  }
+
+  // Chirrido de neumáticos del derrape: ruido filtrado en bucle; level 0 (calla) .. 1. Flojo a propósito.
+  skid(level) {
+    if (!this.ctx) return;
+    const want = this.muted ? 0 : Math.max(0, Math.min(1, level));
+    if (!this.skidNode) {
+      if (want <= 0) return;
+      const c = this.ctx;
+      const src = c.createBufferSource(); src.buffer = this.noise; src.loop = true; src.playbackRate.value = 1.3;
+      const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 2300; f.Q.value = 7;
+      const g = c.createGain(); g.gain.value = 0;
+      src.connect(f).connect(g).connect(this.sfx);
+      src.start();
+      this.skidNode = { src, f, g, level: 0 };
+    }
+    const n = this.skidNode;
+    if (Math.abs(want - n.level) < 0.01) return;
+    n.level = want;
+    const t = this.ctx.currentTime;
+    n.g.gain.setTargetAtTime(0.05 * want, t, 0.06);
+    n.f.frequency.setTargetAtTime(2100 + 400 * Math.random(), t, 0.1);
   }
 
   engineStop() {
