@@ -2,3 +2,4 @@ node_modules/
 ESTADO.yaml
 *.log
 shots/
+.claude/
