@@ -127,7 +127,113 @@ r.chafaGigante = await ev(() => {
 });
 check.chafaGigante = r.chafaGigante.chafado && Math.abs(r.chafaGigante.dur - 1.4) < 0.01 && r.chafaGigante.gigante;
 
-// 4. Remontada: un camión de la IA, último a ~200 m del primero, usa el modo gigante; se compara con
+// 4. Chafar: caerle encima, embestir siendo más grande, tamaños parecidos, en paralelo, inmunidad y salida
+await ev(() => {
+  const g = window.__mm;
+  // Dos camiones solos en un tramo recto de clasico; los demás, lejos. Devuelve [a, b].
+  window.__pair = (ida, idb) => {
+    window.__race('clasico');
+    window.__run(4);
+    const vs = g.vehicles;
+    const a = vs.find((o) => o.def.id === ida), b = vs.find((o) => o.def.id === idb);
+    vs.filter((o) => o !== a && o !== b).forEach((o, i) => o.placeAt(700 + i * 30, 0, 0));
+    for (const o of [a, b]) { o.invuln = 0; o.blink = 0; o.stun = 0; o.squash = 0; o.crushImmune = 0; o.giant = 0; o.giantK = 0; o.size = o.baseSize; o.hitCool = 0; }
+    g.raceTime = 30;
+    return [a, b];
+  };
+  // a embiste a b por detrás (dv m/s más rápido), en el mismo carril o en paralelo (lat m de lado)
+  window.__ram = (ida, idb, dv, lat = 0, vb = 20) => {
+    const [a, b] = window.__pair(ida, idb);
+    b.placeAt(80, 0, vb);
+    const gap = 2.3 * (a.size + b.size) + 0.3;
+    a.placeAt(80 - (lat ? 0 : gap), lat, vb + dv);
+    const va = a.speed;
+    let t = 0;
+    while (t < 0.5 && b.squash <= 0) { window.__run(1 / 120); t += 1 / 120; }
+    return { chafado: b.squash > 0, dur: +b.squashDur.toFixed(2), velGrande: +(a.speed / va).toFixed(2), a, b };
+  };
+});
+r.chafar = await ev(() => {
+  const g = window.__mm;
+  const out = {};
+  // caerle encima: el más pequeño cae sobre el más grande
+  {
+    const [a, b] = window.__pair('relampago', 'mamut');
+    b.placeAt(80, 0, 15);
+    a.placeAt(80, 0.5, 15);
+    a.y = b.y + 3.2; a.vy = -9; a.onGround = false;
+    for (let i = 0; i < 30 && b.squash <= 0; i++) window.__run(1 / 120);
+    out.caida = { chafado: b.squash > 0, dur: +b.squashDur.toFixed(2), rebota: a.vy > 0 || !a.onGround };
+  }
+  // embestir: Mamut a Relámpago, Mamut a Trituradora, Dragón a Escorpión, Megalodón a Dragón, Trituradora a Escorpión
+  const ram = (x, y, dv) => { const q = window.__ram(x, y, dv); return { chafado: q.chafado, dur: q.dur, velGrande: q.velGrande }; };
+  out.mamutRelampago = ram('mamut', 'relampago', 15);
+  out.mamutTrituradora = ram('mamut', 'trituradora', 15);
+  out.dragonEscorpion = ram('dragon', 'escorpion', 15);
+  out.megalodonDragon = ram('megalodon', 'dragon', 15);
+  out.trituradoraEscorpion = ram('trituradora', 'escorpion', 15);
+  out.mamutLento = ram('mamut', 'relampago', 3); // poca diferencia de velocidad: solo empuja
+  // en paralelo, rozándose a la misma velocidad
+  { const q = window.__ram('mamut', 'relampago', 0, 4.6); out.paralelo = { chafado: q.chafado }; }
+  // aplastado: se queda casi parado aunque acelere
+  {
+    const q = window.__ram('mamut', 'relampago', 15);
+    const b = q.b; window.__run(0.6);
+    out.parado = { vel: +b.speed.toFixed(1), alto: +(b.mesh.scale.y / b.size).toFixed(2), ancho: +(b.mesh.scale.x / b.size).toFixed(2) };
+    window.__run(b.squash + 0.6);
+    out.recuperado = +(b.mesh.scale.y / b.size).toFixed(2);
+  }
+  // inmunidad: a los 2 s de levantarse no se le puede volver a chafar; a los 2,6 s sí
+  {
+    const q = window.__ram('mamut', 'relampago', 15);
+    const [a, b] = [q.a, q.b];
+    window.__run(b.squash + 2.0);
+    out.inmuneA2s = !b.crushable;
+    window.__run(0.6);
+    out.chafableA2_6s = b.crushable;
+  }
+  // salida: en los 3 primeros segundos de carrera no se chafa
+  {
+    const [a, b] = window.__pair('mamut', 'relampago');
+    g.raceTime = 1;
+    b.placeAt(80, 0, 20); a.placeAt(80 - 2.3 * (a.size + b.size) - 0.3, 0, 35);
+    for (let i = 0; i < 60; i++) window.__run(1 / 120);
+    out.salida = { chafado: b.squash > 0 || b.crushImmune > 0 };
+  }
+  // ni invulnerable ni gigante
+  {
+    const [a, b] = window.__pair('mamut', 'relampago');
+    b.placeAt(80, 0, 20); a.placeAt(80 - 2.3 * (a.size + b.size) - 0.3, 0, 35); b.invuln = 1.5;
+    for (let i = 0; i < 60; i++) window.__run(1 / 120);
+    out.invulnerable = { chafado: b.squash > 0 };
+  }
+  // y los sucesos llegan a los dos
+  {
+    const [a, b] = window.__pair('mamut', 'relampago');
+    const seen = [];
+    const ph = Object.getPrototypeOf(g).handleEvents;
+    g.handleEvents = function () { for (const v of this.vehicles) for (const e of v.events) if (e.type.startsWith('crush')) seen.push(`${v.def.id}:${e.type}:${e.how}`); return ph.call(this); };
+    b.placeAt(80, 0, 20); a.placeAt(80 - 2.3 * (a.size + b.size) - 0.3, 0, 35);
+    for (let i = 0; i < 60; i++) window.__run(1 / 120);
+    g.handleEvents();
+    delete g.handleEvents;
+    out.sucesos = seen.join(' ');
+  }
+  return out;
+});
+{
+  const c = r.chafar;
+  check.caida = c.caida.chafado && c.caida.dur === 1.4;
+  check.tamano = c.mamutRelampago.chafado && c.mamutRelampago.dur > 1.3 && c.mamutRelampago.velGrande >= 0.9 && c.mamutTrituradora.chafado &&
+    c.mamutTrituradora.dur > 0.9 && c.mamutTrituradora.dur < c.mamutRelampago.dur && c.dragonEscorpion.chafado;
+  check.parecidos = !c.megalodonDragon.chafado && !c.trituradoraEscorpion.chafado && !c.mamutLento.chafado && !c.paralelo.chafado;
+  check.aplastado = c.parado.vel < 6 && c.parado.alto < 0.4 && c.parado.ancho > 1.1 && Math.abs(c.recuperado - 1) < 0.05;
+  check.inmunidad = c.inmuneA2s && c.chafableA2_6s;
+  check.salida = !c.salida.chafado && !c.invulnerable.chafado;
+  check.sucesos = /relampago:crushed:size/.test(c.sucesos) && /mamut:crushTruck:size/.test(c.sucesos);
+}
+
+// 5. Remontada: un camión de la IA, último a ~200 m del primero, usa el modo gigante; se compara con
 // lo que hace en el mismo sitio sin él (10 s después: 6 s de gigante y 4 s más)
 const comeback = (giant, id) => ev(([giant, id]) => {
   const g = window.__mm;

@@ -34,12 +34,17 @@ await p.evaluate(() => {
     g.settings.laps = laps; g.autopilot = true; g.startRace(); g.countdown = 0.01;
     const KINDS = ['log', 'ball', 'boom', 'net', 'fallPit', 'fallWater', 'tired', 'barreled', 'rocketed', 'waved', 'meteor', 'car',
       'scrape', 'wall', 'driftBoost', 'crushTruck', 'crushed', 'giant'];
+    // chafar, según cómo: gigante, cayendo encima o por tamaño
+    for (const h of ['giant', 'fall', 'size']) KINDS.push('crushTruck:' + h, 'crushed:' + h);
     const per = new Map(g.vehicles.map((v) => [v, { stuck: 0, wrong: 0, ...Object.fromEntries(KINDS.map((k) => [k, 0])) }]));
     const items = { launch: { tire: 0, barrel: 0, rocket: 0 }, hit: { tire: 0, barrel: 0, rocket: 0 }, selfBarrel: 0, rocketDodged: 0, rocketNoTarget: 0, rolls: [] };
     // eventos: se cuentan antes de que handleEvents vacíe la lista
     const origHandle = Object.getPrototypeOf(g).handleEvents;
     g.handleEvents = function () {
-      for (const v of this.vehicles) for (const e of v.events) if (e.type in per.get(v)) per.get(v)[e.type]++;
+      for (const v of this.vehicles) for (const e of v.events) {
+        if (e.type in per.get(v)) per.get(v)[e.type]++;
+        if (e.how && e.type + ':' + e.how in per.get(v)) per.get(v)[e.type + ':' + e.how]++;
+      }
       return origHandle.call(this);
     };
     // reapariciones fuera de las caídas: por atasco o por dirección contraria
@@ -124,8 +129,8 @@ if (!medir) {
     }
   }
   // tabla 1b: sucesos nuevos por camión (turbos de derrape, chafar, ser chafado, modo gigante)
-  const NEW = ['driftBoost', 'crushTruck', 'crushed', 'giant'];
-  console.log('\n## Sucesos por camión y vuelta (driftBoost: turbos de derrape; crushTruck: chafa a otro; crushed: le chafan)');
+  const NEW = ['driftBoost', 'giant', 'crushTruck', 'crushed', 'crushTruck:size', 'crushed:size', 'crushTruck:fall', 'crushed:fall', 'crushTruck:giant', 'crushed:giant'];
+  console.log('\n## Sucesos por camión y vuelta (driftBoost: turbos de derrape; crushTruck: chafa a otro; crushed: le chafan; :size por tamaño, :fall cayendo encima, :giant siendo gigante)');
   console.log(['dif', 'camión', 'tamaño', 'n', ...NEW].join('\t'));
   for (const diff of diffs) {
     const rs = all.filter((r) => r.diff === diff);
