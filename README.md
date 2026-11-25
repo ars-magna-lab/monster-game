@@ -74,12 +74,16 @@ terminan el campeonato. Se guardan las copas ganadas y la mejor puntuación. Val
 
 ## Qué hay
 
-- Cinco circuitos, que se eligen en la pantalla del camión:
-  - **Valle Monstruo**: el original, con fosos, troncos y cocodrilos.
-  - **Pico Helado**: placas de hielo que patinan, bolas de nieve gigantes, muñecos de nieve y agua helada.
-  - **Volcán Rugiente**: fosos de lava, rocas rodantes y ceniza.
-  - **Selva Salvaje**: mucho barro, troncos, palmeras y un río con cocodrilos.
-  - **Gran Ciudad**: asfalto, rascacielos, manchas de aceite, tuberías rodantes y una avenida llena de coches.
+- Cinco circuitos, cada uno con su trazado, su orden de obstáculos y algo que solo tiene él. Se eligen en la pantalla del camión:
+  - **Valle Monstruo** (1,9 km): el original, con fosos, troncos, bolas de demolición y cocodrilos.
+  - **Pico Helado** (2,5 km): rápido y resbaladizo. Un lago helado lleno de muñecos de nieve, bolas de nieve
+    gigantes, un gran salto sobre una grieta de agua helada y una cueva de hielo.
+  - **Volcán Rugiente** (2,7 km): el más largo. Tres fosos de lava, rocas rodantes y un túnel largo con
+    barriles que estallan en cadena.
+  - **Selva Salvaje** (1,7 km): el más corto y revirado, con mucho barro. Un río con dos puentes colgantes
+    (hay que elegir uno), troncos colgantes, dos redes y un templo.
+  - **Gran Ciudad** (2,4 km): esquinas de 90° y avenidas largas con muchos turbos, una zona de obras con
+    tuberías y barriles, coches para aplastar y una alcantarilla con cocodrilos.
 
 - Seis camiones con forma, tamaño y estadísticas distintas: Trituradora, Megalodón, Escorpión, Mamut
   (el más grande), Relámpago (el más pequeño) y Dragón.
@@ -101,6 +105,7 @@ npm run dev       # recompila al guardar
 npm test          # prueba de humo (también: node tools/smoke.mjs dos|teclado|carrera) en Chrome sin interfaz (capturas en shots/ y carrera simulada)
 node tools/shot.mjs salida.png "g.startRace()" 2000   # captura de depuración
 node tools/circuits.mjs [nieve ...]                    # una vuelta simulada y captura de cada circuito
+node tools/trazado.mjs                                 # valida los trazados (cierran, no se pisan, cada obstáculo cabe) y los dibuja
 node tools/music.mjs race 30 race.wav [drums,bass]     # renderiza la música (opcional: instrumentos a silenciar)
 npm run musica            # vuelve a generar los MP3 de assets/musica (unos 7 minutos)
 npm run test:pista        # comprueba que el suelo no tapa la pista al dibujar sin tarjeta gráfica
