@@ -189,6 +189,17 @@ export class FX {
     this.sparks(x, y + 1, z, 30);
   }
 
+  // humo de ruedas o de motor; dark de 0 (gris claro) a 1 (negro)
+  smoke(x, y, z, vx, vz, dark = 0, size = 1.2) {
+    const c = 0.8 - 0.6 * dark;
+    this.soft.emit({
+      x: x + (Math.random() - 0.5) * 0.8, y: y + 0.3, z: z + (Math.random() - 0.5) * 0.8,
+      vx: vx + (Math.random() - 0.5) * 2.5, vy: 1.5 + Math.random() * 2 + dark * 1.5, vz: vz + (Math.random() - 0.5) * 2.5,
+      life: 0.7 + Math.random() * 0.4 + dark * 0.3, size, grow: 2.2 + dark * 1.3, color: [c, c * 0.97, c * 0.95],
+      alpha: 0.4 + 0.2 * dark, gravity: -0.8, drag: 1.6,
+    });
+  }
+
   boostFlame(x, y, z, vx, vz) {
     this.glow.emit({
       x, y, z, vx: vx * 0.6 + (Math.random() - 0.5) * 2, vy: 1.5 + Math.random(), vz: vz * 0.6 + (Math.random() - 0.5) * 2,

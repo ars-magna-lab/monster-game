@@ -34,6 +34,22 @@ const PLAYER_MSG = {
 const AI_EVEN = 0.85; // cuánto se igualan las velocidades punta de los camiones de la IA (0 = nada, 1 = del todo)
 const ORDINAL = ['PRIMERO', 'SEGUNDO', 'TERCERO', 'CUARTO', 'QUINTO', 'SEXTO'];
 const KEYHINT = { solo: 'ESPACIO', p1: 'Q / ESPACIO', p2: 'INTRO' };
+// Salida: this.countdown baja de START.total a 0. Primero la vuelta de la cámara
+// (START.intro segundos, con «¡PREPARADOS!»), después 3, 2, 1 y «¡YA!» al llegar a 0.
+const START = {
+  total: 4.7,
+  intro: 1.5,
+  two: 2.0,          // momento en que sale el «2»
+  perfect: 0.4,      // ventana de la salida perfecta tras el «2»
+  boostPerfect: 1.8, // turbo de la salida perfecta
+  boostGood: 0.8,    // turbo de la buena salida
+  stall: 1.2,        // motor ahogado por acelerar antes del «2»
+  press: 0.3,        // por encima de esto el gatillo cuenta como pulsado
+  aiBoost: 0.35,     // probabilidad de que un camión de la IA salga con turbo
+};
+const AI_STALL = { facil: 0.12, normal: 0.06, dificil: 0.015 }; // probabilidad de que se le ahogue a la IA
+// Tipo de salida según cuándo empezó la pulsación que sigue mantenida (valor de la cuenta en ese momento)
+const startKind = (held) => (held === null ? null : held > START.two ? 'stall' : held > START.two - START.perfect ? 'perfect' : 'good');
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const hex = (c) => '#' + new THREE.Color(c).getHexString();
@@ -660,7 +676,7 @@ class Game {
     });
     this.humans = humans;
     this.raceTime = 0;
-    this.countdown = 4.2;
+    this.countdown = START.total;
     this.finishCount = 0;
     this.resultsT = 0;
     this.allDoneT = null;
@@ -1312,8 +1328,11 @@ class Game {
       let best = null;
       for (const p of this.humans) if (!best || Math.abs(p.vF) / p.maxSpeed > Math.abs(best.vF) / best.maxSpeed) best = p;
       const i = this.humans.indexOf(best);
-      const thr = this.state === 'countdown' ? Math.max(...ctrls.map((c) => c.throttle)) : this.state === 'finished' ? 0.3 : best.control.throttle;
-      this.sound.engineUpdate(Math.abs(best.vF) / best.maxSpeed + (this.state === 'countdown' ? thr * 0.6 : 0), thr, best.boost > 0 && i >= 0, !best.onGround);
+      let thr = this.state === 'countdown' ? Math.max(...ctrls.map((c) => c.throttle)) : this.state === 'finished' ? 0.3 : best.control.throttle;
+      // en la parrilla, si se acelera demasiado pronto el motor suena forzado; ahogado, petardea al ralentí
+      let rev = this.state === 'countdown' ? thr * 0.6 + (this.startStrain || 0) * (0.45 + Math.random() * 0.3) : 0;
+      if (best.stall > 0 && i >= 0) { thr = 0; rev = Math.random() < 0.25 ? 0.25 : -0.3; }
+      this.sound.engineUpdate(Math.abs(best.vF) / best.maxSpeed + rev, thr, best.boost > 0 && i >= 0, !best.onGround);
     }
 
     this.updateRings(dt);
@@ -1389,10 +1408,12 @@ class Game {
     const before = this.countdown;
     this.countdown -= dt;
     const c = this.countdown;
-    // salida turbo: acelerar después del "2"
+    // salida: cuenta cuándo empezó la pulsación que sigue mantenida (si se suelta, vuelve a empezar)
     this.views.forEach((v, i) => {
-      if (ctrls[i].throttle > 0) { if (v.heldSince === null) v.heldSince = c; } else v.heldSince = null;
+      if (ctrls[i].throttle > START.press) { if (v.heldSince === null) v.heldSince = c; } else v.heldSince = null;
     });
+    this.startStrain = 0;
+    if (!this.autopilot) for (const v of this.views) this.startHint(v, dt, c);
     const lights = this.trackMeshes.lights;
     for (const k of [3, 2, 1]) {
       if (before > k && c <= k) {
@@ -1401,28 +1422,70 @@ class Game {
         lights[3 - k].material.color.setHex(0xff2020);
       }
     }
-    if (before > 3.9 && c <= 3.9) for (const v of this.views) v.hud.message('¡PREPARADOS!', 1.2);
+    if (before > START.total - 0.05 && c <= START.total - 0.05) for (const v of this.views) v.hud.message('¡PREPARADOS!', START.intro);
     if (c <= 0) {
       this.state = 'race';
       this.sound.play('go');
       for (const l of lights) l.material.color.setHex(0x22ff44);
       for (const v of this.views) {
         v.hud.big('¡YA!', 1.0, 'go');
-        if (v.heldSince !== null && v.heldSince <= 2.0 && !this.autopilot) {
-          v.player.boost = 1.4;
-          v.hud.message('¡SALIDA TURBO!', 1.2);
+        const p = v.player;
+        p.rev = 0;
+        const kind = this.autopilot ? null : startKind(v.heldSince);
+        if (kind === 'stall') {
+          p.stall = START.stall;
+          v.hud.message('¡MOTOR AHOGADO!', 1.4, 'warn');
+          this.sound.play('stall');
+        } else if (kind === 'perfect') {
+          p.boost = START.boostPerfect;
+          v.hud.message('¡SALIDA PERFECTA!', 1.4);
+          this.sound.play('perfect');
           this.sound.play('nitro', 0.7);
+        } else if (kind === 'good') {
+          p.boost = START.boostGood;
+          v.hud.message('¡BUENA SALIDA!', 1.2);
+          this.sound.play('turbo', 0.8);
         }
       }
-      for (const v of this.vehicles) if (!v.isPlayer && Math.random() < 0.35) v.boost = 1.2;
+      // la IA también: unos salen con turbo y a alguno se le ahoga el motor
+      const pStall = AI_STALL[this.settings.diff] ?? AI_STALL.normal;
+      for (const v of this.vehicles) {
+        if (v.isPlayer) continue;
+        const r = Math.random();
+        if (r < pStall) v.stall = START.stall;
+        else if (r < pStall + START.aiBoost) v.boost = 1.2;
+      }
       this.sound.musicStart(true);
     }
     for (const v of this.vehicles) v.syncMesh(dt);
   }
 
+  // Pistas de la salida mientras se acelera en la parrilla: las ruedas patinan y echan humo;
+  // si la pulsación empezó antes del «2», el humo va a más y se oscurece (se va a ahogar)
+  startHint(view, dt, c) {
+    const p = view.player;
+    const held = view.heldSince !== null && c > 0;
+    p.rev = held ? 1 : 0;
+    if (!held) return;
+    const early = view.heldSince > START.two;
+    const dark = early ? clamp(0.3 + (view.heldSince - c) / 1.2, 0, 1) : 0;
+    if (early) this.startStrain = Math.max(this.startStrain, dark);
+    const n = (early ? 16 + 22 * dark : 14) * dt;
+    const fx = Math.cos(p.th), fz = Math.sin(p.th), sz = p.size;
+    for (let i = 0; i < 4 && Math.random() < n - i; i++) {
+      const side = (Math.random() < 0.5 ? 1.5 : -1.5) * sz, back = -1.9 * sz;
+      this.fx.smoke(p.x + fx * back - fz * side, p.y, p.z + fz * back + fx * side, -fx * 4, -fz * 4, dark, (1.1 + 0.5 * dark) * sz);
+    }
+  }
+
   vehicleFx(dt) {
     for (const v of this.vehicles) {
       if (v.state === 'fallen') continue;
+      if (v.stall > 0 && Math.random() < dt * 20) {
+        // motor ahogado: humo negro a borbotones por los escapes
+        const fx = Math.cos(v.th), fz = Math.sin(v.th), side = (Math.random() < 0.5 ? -0.85 : 0.85) * v.size;
+        this.fx.smoke(v.x - fx * 2.4 * v.size - fz * side, v.y + 3.2 * v.size, v.z - fz * 2.4 * v.size + fx * side, -fx * 2, -fz * 2, 1, 1.2 * v.size);
+      }
       const sp = v.speed;
       if (v.onGround && sp > 8) {
         const back = -2.2;
@@ -1507,13 +1570,31 @@ class Game {
     if (this.state === 'paused') {
       // cámara quieta
     } else if (st === 'countdown') {
-      const t = clamp(1 - (this.countdown - 0.4) / 3.8, 0, 1);
-      const e = t * t * (3 - 2 * t);
-      const ang = p.th + Math.PI * (1 - e) + (view.idx === 1 ? -0.6 : 0.6) * Math.sin(e * Math.PI);
-      const dist = (15 - 4 * e) * (portrait ? 1.4 : 1);
-      view.camPos.set(p.x + Math.cos(ang) * dist, p.y + 3.5 + 2 * (1 - e), p.z + Math.sin(ang) * dist);
-      view.camLook.set(p.x, p.y + 2.2, p.z);
       view.camYaw = p.th;
+      const ch = this.chaseTarget(view, p);
+      fovTarget = ch.fov;
+      const u = clamp((START.total - this.countdown) / START.intro, 0, 1);
+      if (u >= 1) {
+        // cuenta atrás: la cámara ya está quieta donde va a estar en la carrera
+        view.camPos.copy(ch.want);
+        view.camLook.copy(ch.look);
+      } else {
+        // vuelta rápida: empieza delante (por el lado de fuera de la parrilla) y acaba justo en la cámara de carrera
+        const e = u * u * u * (u * (u * 6 - 15) + 10); // suave al empezar y al acabar
+        const fx = Math.cos(p.th), fz = Math.sin(p.th);
+        const tp = this.track.pointAt(p.s);
+        const out = Math.abs(p.d) > 1 ? Math.sign(p.d) * Math.sign(-fz * tp.rx + fx * tp.rz || 1) : view.idx === 1 ? -1 : 1;
+        const big = 0.55 + 0.45 * p.size;
+        const r0 = 7.5 * big * (portrait ? 1.25 : 1);
+        const rx = ch.want.x - p.x, rz = ch.want.z - p.z;
+        const backD = -(rx * fx + rz * fz), latD = rx * -fz + rz * fx; // cámara de carrera en ejes del camión
+        const phi = 0.6 + (Math.PI - 0.6) * e;
+        const along = Math.cos(phi) * (r0 + (backD - r0) * e);
+        const lat = out * Math.sin(phi) * 6 * big + latD * e;
+        const h0 = p.y + 3.2 * big;
+        view.camPos.set(p.x + fx * along - fz * lat, h0 + (ch.want.y - h0) * e, p.z + fz * along + fx * lat);
+        view.camLook.set(p.x, p.y + 1.8 * big, p.z).lerp(ch.look, e);
+      }
     } else if (p.finished && (st === 'race' || this.resultsT < 2.2)) {
       const a = this.time * 0.25 + view.idx * Math.PI;
       view.camPos.lerp(new THREE.Vector3(p.x + Math.cos(a) * 16, p.y + 7, p.z + Math.sin(a) * 16), 1 - Math.exp(-dt * 2));
@@ -1523,23 +1604,14 @@ class Game {
         const moving = Math.abs(p.vF) > 1;
         view.camYaw = lerpAng(view.camYaw, moving || p.stun <= 0 ? p.th : view.camYaw, 1 - Math.exp(-dt * 5));
       }
-      const sp = Math.abs(p.vF);
-      const wide = cam.aspect > 2.6; // media pantalla apaisada: un poco más de altura
-      const big = 0.55 + 0.45 * p.size; // los camiones grandes llevan la cámara algo más lejos
-      const dist = (10.5 + clamp(sp * 0.07, 0, 3.2)) * (portrait ? 1.55 : 1) * big;
-      const height = (4.4 + clamp(sp * 0.02, 0, 0.8)) * (portrait ? 1.35 : wide ? 0.9 : 1) * big;
-      const baseY = p.state === 'fallen' && p.fall ? Math.max(p.y, p.fall.pit.top - 1) : p.y;
-      const want = new THREE.Vector3(p.x - Math.cos(view.camYaw) * dist, baseY + height, p.z - Math.sin(view.camYaw) * dist);
-      const q = this.track.project(want.x, want.z, p.idx);
-      const g = this.track.surfaceAt(q.s, clamp(q.d, -LIMIT, LIMIT));
-      const gh = g.type === 'pit' || g.type === 'water' ? g.top : g.h;
-      want.y = Math.max(want.y, gh + 2.2);
+      const ch = this.chaseTarget(view, p);
+      const want = ch.want;
       const kxz = 1 - Math.exp(-dt * 9), ky = 1 - Math.exp(-dt * 5);
       view.camPos.x += (want.x - view.camPos.x) * kxz;
       view.camPos.z += (want.z - view.camPos.z) * kxz;
       view.camPos.y += (want.y - view.camPos.y) * ky;
-      view.camLook.set(p.x + Math.cos(view.camYaw) * 5, p.y + 2.4, p.z + Math.sin(view.camYaw) * 5);
-      fovTarget = (portrait ? 78 : wide ? 58 : 68) + clamp(sp / p.maxSpeed, 0, 1.3) * 8 + (p.boost > 0 ? 7 : 0);
+      view.camLook.copy(ch.look);
+      fovTarget = ch.fov;
     }
     view.fov += (fovTarget - view.fov) * Math.min(1, dt * 3);
     cam.fov = view.fov;
@@ -1553,6 +1625,26 @@ class Game {
     }
     cam.lookAt(view.camLook);
     cam.updateProjectionMatrix();
+  }
+
+  // Dónde quiere ir la cámara de persecución (la salida la usa para acabar justo ahí)
+  chaseTarget(view, p) {
+    const cam = view.camera;
+    const portrait = cam.aspect < 1;
+    const sp = Math.abs(p.vF);
+    const wide = cam.aspect > 2.6; // media pantalla apaisada: un poco más de altura
+    const big = 0.55 + 0.45 * p.size; // los camiones grandes llevan la cámara algo más lejos
+    const dist = (10.5 + clamp(sp * 0.07, 0, 3.2)) * (portrait ? 1.55 : 1) * big;
+    const height = (4.4 + clamp(sp * 0.02, 0, 0.8)) * (portrait ? 1.35 : wide ? 0.9 : 1) * big;
+    const baseY = p.state === 'fallen' && p.fall ? Math.max(p.y, p.fall.pit.top - 1) : p.y;
+    const want = new THREE.Vector3(p.x - Math.cos(view.camYaw) * dist, baseY + height, p.z - Math.sin(view.camYaw) * dist);
+    const q = this.track.project(want.x, want.z, p.idx);
+    const g = this.track.surfaceAt(q.s, clamp(q.d, -LIMIT, LIMIT));
+    const gh = g.type === 'pit' || g.type === 'water' ? g.top : g.h;
+    want.y = Math.max(want.y, gh + 2.2);
+    const look = new THREE.Vector3(p.x + Math.cos(view.camYaw) * 5, p.y + 2.4, p.z + Math.sin(view.camYaw) * 5);
+    const fov = (portrait ? 78 : wide ? 58 : 68) + clamp(sp / p.maxSpeed, 0, 1.3) * 8 + (p.boost > 0 ? 7 : 0);
+    return { want, look, fov };
   }
 
   updateBlobs() {

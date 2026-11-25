@@ -42,6 +42,8 @@ export class Vehicle {
     this.idx = -1; this.s = 0; this.d = 0; this.prevS = 0;
     this.lap = 0; this.checkpoint = true; this.finished = false; this.finishTime = 0;
     this.lapStart = 0; this.lapTimes = []; this.place = 1;
+    // stall: motor ahogado en la salida (no acelera); rev: ruedas patinando en la parrilla
+    this.stall = 0; this.rev = 0;
     this.boost = 0; this.stun = 0; this.spin = 0; this.spinT = 0; this.spinDur = 0;
     this.state = 'ok'; this.stateTimer = 0; this.fall = null;
     this.comp = 0; this.compV = 0; this.pitch = 0; this.roll = 0;
@@ -137,6 +139,7 @@ export class Vehicle {
     this.blink = Math.max(0, this.blink - dt);
     this.hitCool = Math.max(0, this.hitCool - dt);
     if (this.stun > 0) this.stun = Math.max(0, this.stun - dt);
+    if (this.stall > 0) this.stall = Math.max(0, this.stall - dt);
     if (this.spinDur > 0) {
       this.spinT += dt;
       if (this.spinT >= this.spinDur) { this.spinDur = 0; this.spin = 0; }
@@ -171,7 +174,7 @@ export class Vehicle {
     if (this.onGround) {
       const surfMul = SURF_SPEED[this.surf] ?? 1;
       const maxV = this.maxSpeed * this.speedMul * surfMul * (this.boost > 0 ? 1.32 : 1);
-      const thr = stunned ? 0 : ctrl.throttle;
+      const thr = stunned || this.stall > 0 ? 0 : ctrl.throttle;
       const brk = stunned ? 0 : ctrl.brake;
       if (thr > 0 && vF < maxV) {
         const a = this.accel * thr * (this.boost > 0 ? 2.2 : 1) * (vF < 0 ? 2 : 1) * (1 - 0.35 * clamp(vF / maxV, 0, 1));
@@ -361,7 +364,7 @@ export class Vehicle {
     const blink = this.blink > 0 && this.state === 'ok' ? Math.floor(this.blink * 12) % 2 === 0 : true;
     m.visible = blink;
     animateTruck(this.parts, {
-      wheelSpin: (this.onGround ? this.vF : this.control.throttle * 30) * dt / WHEEL_R,
+      wheelSpin: (this.onGround ? this.vF + this.rev * 28 : this.control.throttle * 30) * dt / WHEEL_R,
       steer: this.steerVis,
       comp: this.comp,
       dt,

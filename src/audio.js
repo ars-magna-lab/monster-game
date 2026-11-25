@@ -107,6 +107,17 @@ export class Sound {
     switch (name) {
       case 'count': this.osc('square', 520, 520, 0.22, 0.25 * v); break;
       case 'go': this.osc('square', 1040, 1040, 0.6, 0.28 * v); this.osc('square', 1560, 1560, 0.6, 0.12 * v); break;
+      case 'stall': // motor ahogado: petardeos que se van apagando
+        for (let i = 0; i < 7; i++) {
+          const t0 = i * 0.17 + Math.random() * 0.05, k = 1 - i * 0.1;
+          this.noiseBurst(0.09, 0.8 * k * v, 'lowpass', 700, 150, 1, t0);
+          this.osc('square', 75 - i * 4, 40, 0.1, 0.3 * k * v, t0);
+        }
+        this.osc('sawtooth', 120, 35, 0.9, 0.12 * v);
+        break;
+      case 'perfect': // salida perfecta: arpegio que sube
+        [523, 784, 1046, 1568].forEach((f, i) => this.osc('triangle', f, f, 0.14, 0.22 * v, i * 0.05));
+        break;
       case 'crash':
         this.noiseBurst(0.45, 0.9 * v, 'lowpass', 1600, 200);
         this.osc('sine', 120, 45, 0.35, 0.8 * v);
