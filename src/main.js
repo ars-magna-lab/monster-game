@@ -5,7 +5,7 @@ import { Track, LIMIT } from './track.js';
 import { buildTrackMeshes } from './trackMesh.js';
 import { buildWorld } from './world.js';
 import { TRUCKS, buildTruck, animateTruck } from './trucks.js';
-import { Vehicle, RADIUS } from './vehicle.js';
+import { Vehicle, RADIUS, CRUSH } from './vehicle.js';
 import { AIDriver } from './ai.js';
 import { Obstacles } from './obstacles.js';
 import { Projectiles } from './projectiles.js';
@@ -30,8 +30,22 @@ const PLAYER_MSG = {
   log: '¡TRONCO!', ball: '¡BOLAZO!', boom: '¡BOOM!', net: '¡ATRAPADO EN LA RED!', crush: '¡CRUNCH!',
   fallPit: '¡AL FOSO!', fallWater: '¡COCODRILOS!', waved: '¡ONDA EXPANSIVA!', nitro: '¡NITRO!', jump: '¡SUPERSALTO!',
   tired: '¡NEUMATAZO!', barreled: '¡BARRILAZO!', rocketed: '¡COHETAZO!', rocketWarn: '¡TE SIGUE UN COHETE!',
-  meteor: '¡ROCA DE FUEGO!', car: '¡CUIDADO CON EL TRÁFICO!', superDrift: '¡SUPERDERRAPE!',
+  meteor: '¡ROCA DE FUEGO!', car: '¡CUIDADO CON EL TRÁFICO!', superDrift: '¡SUPERDERRAPE!', giant: '¡MODO GIGANTE!',
+  crushed: '¡TE HAN CHAFADO!', crushTruck: '¡CHAFADO!',
 };
+// Chafar a otro camión: cayéndole encima (siempre), siendo el gigante (siempre) o embistiéndole
+// siendo bastante más grande y más rápido que él en la dirección del choque.
+const CRUSH_RULE = {
+  start: 3,       // segundos de carrera sin chafar (en la parrilla van pegados)
+  ratio: 1.16,    // tamaño mínimo del grande respecto al pequeño
+  ratioMax: 1.5,  // con esta diferencia (o más), el chafado dura lo máximo
+  closing: 8,     // m/s mínimos a los que el grande se echa encima del pequeño (más que él)
+  push: 4,        // y lo que va él mismo hacia el pequeño
+  head: 0.5,      // parte de su velocidad que va hacia el pequeño (0,5: choque a menos de 60° de su rumbo)
+  fallH: 1.2,     // el de arriba tiene que venir de por encima del techo (× tamaño del de abajo)
+};
+// Modo gigante: solo a los últimos, con la carrera ya estirada, y nunca dos a la vez
+const GIANT_ROLL = { last: 0.45, second: 0.15, minTime: 12, minGap: 120, minTrucks: 3 };
 // Colores de las chispas del derrape (y de la barra de carga) por nivel: humo, azul, naranja y morado
 const DRIFT_COLORS = [[0.85, 0.85, 0.85], [0.1, 0.4, 1], [1, 0.4, 0.02], [0.6, 0.1, 1]];
 const AI_EVEN = 0.85; // cuánto se igualan las velocidades punta de los camiones de la IA (0 = nada, 1 = del todo)
@@ -766,7 +780,20 @@ class Game {
     this.last = performance.now();
   }
 
+  // ¿Le toca el modo gigante? Al último un 45 %, al penúltimo un 15 %; hace falta que la carrera
+  // lleve un rato, ir lejos del primero y que no haya otro gigante (ni otro con el objeto en la mano).
+  giantRoll(v) {
+    const n = this.vehicles.length;
+    if (n < GIANT_ROLL.minTrucks || this.raceTime < GIANT_ROLL.minTime) return false;
+    if (this.vehicles.some((o) => o.giant > 0 || o.item === 'giant')) return false;
+    const lead = Math.max(...this.vehicles.map((o) => o.progress));
+    if (lead - v.progress < GIANT_ROLL.minGap) return false;
+    const p = v.place === n ? GIANT_ROLL.last : v.place === n - 1 ? GIANT_ROLL.second : 0;
+    return Math.random() < p;
+  }
+
   rollItem(v) {
+    if (this.giantRoll(v)) return 'giant';
     const t = (v.place - 1) / Math.max(1, this.vehicles.length - 1);
     // los de atrás reciben objetos más fuertes; el cohete nunca le toca al primero
     const w = {
@@ -1108,13 +1135,29 @@ class Game {
         const d2 = dx * dx + dz * dz;
         const R2 = RADIUS * (a.size + b.size);
         if (d2 > R2 * R2 || Math.abs(a.y - b.y) > 2.8 * Math.max(a.size, b.size)) continue;
+        if (a.squash > 0 || b.squash > 0) continue; // chafado, queda plano: los demás le pasan por encima
         const d = Math.sqrt(d2) || 0.01;
         const nx = dx / d, nz = dz / d;
         const over = R2 - d;
-        const ma = a.mass, mb = b.mass;
+        // el gigante apenas se deja empujar
+        const ma = a.mass * (a.giant > 0 ? 4 : 1), mb = b.mass * (b.giant > 0 ? 4 : 1);
         a.x -= nx * over * (mb / (ma + mb)); a.z -= nz * over * (mb / (ma + mb));
         b.x += nx * over * (ma / (ma + mb)); b.z += nz * over * (ma / (ma + mb));
         const vn = (b.vx - a.vx) * nx + (b.vz - a.vz) * nz;
+        const cr = this.crushPair(a, b, nx, nz, d / R2);
+        if (cr && cr.small.crush(cr.big, cr.dur, cr.how)) {
+          // el que chafa sigue casi igual; el chafado se queda donde está, casi parado
+          cr.big.vx *= 0.95; cr.big.vz *= 0.95;
+          cr.small.vx *= 0.2; cr.small.vz *= 0.2;
+          if (cr.fall) { cr.big.vy = Math.max(cr.big.vy, 7); cr.big.onGround = false; } // rebota en el techo
+          const sm = cr.small;
+          this.fx.sparks(sm.x, sm.y + 1.5 * sm.size, sm.z, 10);
+          for (let k = 0; k < 10; k++) {
+            const an = (k / 10) * Math.PI * 2;
+            this.fx.dust(sm.x + Math.cos(an) * 2 * sm.size, sm.y, sm.z + Math.sin(an) * 2 * sm.size, Math.cos(an) * 14, Math.sin(an) * 14, undefined, 1, 2);
+          }
+          continue;
+        }
         if (vn < 0) {
           const jimp = (-1.4 * vn) / (1 / ma + 1 / mb);
           a.vx -= (jimp * nx) / ma; a.vz -= (jimp * nz) / ma;
@@ -1131,6 +1174,29 @@ class Game {
         }
       }
     }
+  }
+
+  // ¿Chafa uno al otro en este contacto? Devuelve { big, small, dur } o null. n: de a hacia b.
+  crushPair(a, b, nx, nz, near) {
+    if (this.raceTime < CRUSH_RULE.start) return null;
+    // el gigante chafa a cualquiera que toque
+    if (a.giant > 0 && b.crushable) return { big: a, small: b, dur: CRUSH.max, how: 'giant' };
+    if (b.giant > 0 && a.crushable) return { big: b, small: a, dur: CRUSH.max, how: 'giant' };
+    // caerle encima: en el aire, bajando y llegando desde más arriba que su techo
+    for (const [up, lo] of [[a, b], [b, a]]) {
+      if (!up.onGround && up.vy < -1 && up.y - lo.y > CRUSH_RULE.fallH * lo.size && near < 0.9 && lo.crushable) return { big: up, small: lo, dur: CRUSH.max, fall: true, how: 'fall' };
+    }
+    // embestir siendo bastante más grande y más rápido en la dirección del choque (rozarse en paralelo no vale)
+    const [big, small, sg] = a.baseSize >= b.baseSize ? [a, b, 1] : [b, a, -1];
+    const ratio = big.baseSize / small.baseSize;
+    // al que ya está aturdido (le ha dado un tronco, un barril...) se le empuja, no se le chafa
+    if (ratio < CRUSH_RULE.ratio || !small.crushable || small.stun > 0 || big.state !== 'ok' || big.squash > 0 || big.stun > 0) return null;
+    // el grande tiene que ir hacia el pequeño (si es el pequeño el que le da por detrás, no le chafa)
+    const bigIn = (big.vx * nx + big.vz * nz) * sg, smallIn = (small.vx * nx + small.vz * nz) * sg; // n va de a hacia b
+    // y de frente: el choque tiene que ir más o menos hacia donde va el grande (un golpe de lado empuja)
+    if (bigIn < CRUSH_RULE.push || bigIn < CRUSH_RULE.head * big.speed || bigIn - smallIn < CRUSH_RULE.closing) return null;
+    const k = clamp((ratio - CRUSH_RULE.ratio) / (CRUSH_RULE.ratioMax - CRUSH_RULE.ratio), 0, 1);
+    return { big, small, dur: CRUSH.min + (CRUSH.max - CRUSH.min) * k, how: 'size' };
   }
 
   rank() {
@@ -1180,6 +1246,10 @@ class Game {
           case 'rocketWarn': if (isP) this.sound.play('wrong'); break;
           case 'net': near('net'); break;
           case 'crush': near('crunch', 0.9); shake(0.3); break;
+          case 'giant': near('giant', 0.8); if (view) this.input.rumble(view.who, 0.6, 400); break;
+          case 'stomp': near('stomp', 0.35); if (view) this.input.rumble(view.who, 0.15, 60); break;
+          case 'crushTruck': near('crunch', 0.8); shake(0.25); break;
+          case 'crushed': near('crunch', 0.9); near('bump', 0.6); shake(0.6); break;
           case 'fallPit': case 'fallWater': near('fall', 0.8); if (view) this.input.rumble(view.who, 1, 400); break;
           case 'splash':
             if (v.fall?.pit?.liquid === 'lava') { near('boom', 0.7); this.fx.explosion(v.x, v.y - 1, v.z); }
@@ -1202,7 +1272,7 @@ class Game {
         }
         const msg = e.type === 'driftBoost' ? (e.level === 3 ? PLAYER_MSG.superDrift : null) : e.type === 'fallWater' ? pitText(this.track.theme, e.liquid) : e.type === 'log' ? this.track.theme.rollerHit : e.type === 'ball' ? this.track.theme.ballHit || PLAYER_MSG.ball : PLAYER_MSG[e.type];
         if (view && msg) {
-          const big = ['fallPit', 'fallWater', 'net', 'ball', 'boom', 'rocketWarn', 'meteor', 'car'].includes(e.type);
+          const big = ['fallPit', 'fallWater', 'net', 'ball', 'boom', 'rocketWarn', 'meteor', 'car', 'giant', 'crushed'].includes(e.type);
           view.hud.message(msg, big ? 1.6 : 1.0, big ? 'warn' : '');
         }
       }
@@ -1582,12 +1652,20 @@ class Game {
     }
   }
 
-  // Derrape: chispas del color del nivel en las dos ruedas traseras (humo claro antes del nivel 1)
+  // Derrape: chispas del color del nivel en las dos ruedas traseras (humo claro antes del nivel 1).
+  // Los camiones de la IA echan menos y solo si alguna cámara los tiene cerca.
   driftFx(v, dt) {
+    let few = 1;
+    if (!this.viewOf(v)) {
+      let near = Infinity;
+      for (const view of this.views) near = Math.min(near, view.camera.position.distanceToSquared(v.mesh.position));
+      if (near > 90 * 90) return;
+      few = 0.6;
+    }
     const lv = v.drift.level;
     const th = v.th + v.driftYaw; // la carrocería se dibuja girada
     const fx = Math.cos(th), fz = Math.sin(th), sz = v.size;
-    const rate = (lv ? 32 : 14) * (this.fx.cheap ? 0.5 : 1) * dt; // partículas por rueda y fotograma
+    const rate = (lv ? 32 : 14) * few * (this.fx.cheap ? 0.5 : 1) * dt; // partículas por rueda y fotograma
     for (const side of [-1.5, 1.5]) {
       const x = v.x - fx * 1.9 * sz - fz * side * sz, z = v.z - fz * 1.9 * sz + fx * side * sz;
       for (let i = 0; i < 3 && Math.random() < rate - i; i++) {
@@ -1726,7 +1804,8 @@ class Game {
     const portrait = cam.aspect < 1;
     const sp = Math.abs(p.vF);
     const wide = cam.aspect > 2.6; // media pantalla apaisada: un poco más de altura
-    const big = 0.55 + 0.45 * p.size; // los camiones grandes llevan la cámara algo más lejos
+    // los camiones grandes llevan la cámara algo más lejos; el gigante, un poco más todavía
+    const big = (0.55 + 0.45 * p.size) * (1 + 0.15 * p.giantK);
     const dist = (10.5 + clamp(sp * 0.07, 0, 3.2)) * (portrait ? 1.55 : 1) * big;
     const height = (4.4 + clamp(sp * 0.02, 0, 0.8)) * (portrait ? 1.35 : wide ? 0.9 : 1) * big;
     const baseY = p.state === 'fallen' && p.fall ? Math.max(p.y, p.fall.pit.top - 1) : p.y;
