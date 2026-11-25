@@ -265,7 +265,7 @@ export const CIRCUITS = [
   {
     // Velocidad entre manzanas: esquinas de 90° cerradas, avenidas largas, obras y alcantarilla
     id: 'ciudad', name: 'Gran Ciudad', short: 'Ciudad', rev: 2,
-    desc: 'Avenidas a toda velocidad, esquinas cerradas, obras, aceite y una alcantarilla con cocodrilos.',
+    desc: 'Avenidas a toda velocidad, esquinas cerradas, obras, aceite, cruces con tráfico y una alcantarilla con cocodrilos.',
     //        0       1          2       3           4       5          6       7          8                    9          10      11          12      13         14                   15         16
     layout: [S(280), A(90, 38), S(160), A(-90, 38), S(140), A(90, 38), S(210), A(90, 38), S(0, { solve: 'X' }), A(90, 38), S(150), A(-90, 38), S(120), A(90, 38), S(0, { solve: 'Y' }), A(90, 38), S(150)],
     features: (at, L) => ({
@@ -277,10 +277,12 @@ export const CIRCUITS = [
         patch(at, 8, 425, -3), patch(at, 12, 100, 4), patch(at, 14, 205, 0),
       ],
       tunnel: { s0: at(6, 30), s1: at(6, 180) }, // paso subterráneo
-      // fase 2: cruces por donde pasará el tráfico (30 m de recta sin nada)
-      reserved: [
-        { kind: 'cruce', s0: at(8, 255), s1: at(8, 285) },
-        { kind: 'cruce', s0: at(10, 60), s1: at(10, 90) },
+      // cruces con tráfico que atraviesa la pista (30 m de recta sin nada más); dir: sentido
+      // de los coches (+1 de izquierda a derecha; en el primero empujan hacia la rampa ancha
+      // de la alcantarilla, no hacia el puente); speed en m/s; cartel 45 m antes
+      crossings: [
+        { s0: at(8, 255), s1: at(8, 285), dir: -1, speed: 13, sign: at(8, 225) },
+        { s0: at(10, 60), s1: at(10, 90), dir: 1, speed: 15, sign: at(10, 30) },
       ],
     }),
     places: {

@@ -123,6 +123,13 @@ export class Sound {
         this.osc('sine', 180, 720, 0.25, 0.4 * v);
         this.osc('sine', 720, 360, 0.3, 0.25 * v, 0.2);
         break;
+      case 'horn':
+        // claxon de coche: dos notas desafinadas a la vez, con un toque corto y otro largo
+        for (const [t0, dur] of [[0, 0.16], [0.22, 0.42]]) {
+          this.osc('sawtooth', 415, 405, dur, 0.16 * v, t0);
+          this.osc('square', 523, 515, dur, 0.1 * v, t0);
+        }
+        break;
       case 'boom':
         this.noiseBurst(1.4, 1.0 * v, 'lowpass', 900, 60);
         this.osc('sine', 90, 30, 0.9, 0.9 * v);
