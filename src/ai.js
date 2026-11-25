@@ -1,10 +1,22 @@
 // Pilotos controlados por el ordenador.
 import { ROAD_HALF, LIMIT } from './track.js';
 import { RAIN_HIT_R } from './obstacles.js';
+import { DRIFT } from './vehicle.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
 // huecos entre las patas del saurópodo (patas en d = -6,5 y +5,5; ver obstacles.js)
 const LEG_GAPS = [-0.5, 9.6];
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+
+// Derrape de la IA. Según la habilidad (fácil 0,7, normal 1, difícil 1,5): en qué parte de las
+// curvas lo intenta y hasta qué nivel de chispas aguanta antes de soltar para cobrar el turbo.
+const AI_DRIFT = {
+  chance: (skill) => clamp(0.2 + (skill - 0.7) * 1.35, 0.1, 0.95),
+  maxLevel: (skill) => (skill < 0.85 ? 1 : skill < 1.25 ? 2 : 3),
+  minNeed: 0.4,   // giro efectivo que pide la curva (en unidades de stick) para que merezca la pena
+  exitNeed: 0.28, // por debajo, la curva se acaba: suelta
+  cool: 0.6,      // segundos entre un derrape y el siguiente
+};
 const wrapAng = (a) => {
   while (a > Math.PI) a -= 2 * Math.PI;
   while (a < -Math.PI) a += 2 * Math.PI;
@@ -28,6 +40,88 @@ export class AIDriver {
     this.meteorBest = null;
     this.pitPick = null; // foso y carril elegidos para cruzarlo
     this.careful = false; // cruzando un puente estrecho: sin titubeos y sin correr tanto
+    this.driftHold = false; // mantiene el botón de derrapar
+    this.driftCurve = null; // null: no está en curva; true / false: en esta curva derrapa o no
+    this.driftCool = 0;
+    this.driftOut = 0; // tiempo seguido pidiendo menos giro del que da el derrape
+  }
+
+  // Giro (en unidades de stick, positivo hacia el lado de la curva) que pide la pista para
+  // recorrer a esta velocidad el tramo [s + a, s + a + len]; con signo según el lado.
+  curveNeed(s, a, len, speed) {
+    const v = this.v;
+    const k = this.track.curvatureAhead(s + a, len) / len; // radianes por metro
+    const hi = clamp(speed / v.maxSpeed, 0, 1.3);
+    return (k * speed) / (v.turnRate * (1 - 0.32 * hi));
+  }
+
+  // ¿Hay delante algo que esquivar o un paso delicado? Entonces no se derrapa (o se suelta).
+  hazardAhead(game, dist) {
+    const v = this.v, tr = this.track, ob = game.obstacles;
+    const rel = (s) => { let d = tr.ahead(v.s, s); if (d > tr.length / 2) d -= tr.length; return d; };
+    for (const o of ob.dodge) { const d = rel(o.s); if (d > -o.len / 2 - 3 && d < dist + 25) return true; }
+    for (const b of ob.balls) { const d = rel(b.s); if (d > -4 && d < dist + 10) return true; }
+    for (const n of ob.nets) { const d = rel(n.s); if (d > -4 && d < dist + 10) return true; }
+    for (const b of ob.barrels) { if (!b.alive) continue; const d = rel(b.s); if (d > -3 && d < dist && Math.abs(b.d - v.d) < 7) return true; }
+    for (const p of tr.pits) { const d0 = rel(p.s0), d1 = rel(p.s1); if (d1 > -4 && d0 < dist + 30) return true; }
+    // olas y patas del saurópodo (Bahía Pirata y Cañón Jurásico)
+    for (const w of tr.waves) { if (rel(w.s1) > -2 && rel(w.s0) < dist + 20) return true; }
+    for (const L of tr.legs) { const d = rel(L.s); if (d > -6 && d < dist + 20) return true; }
+    const R = ob.rain;
+    if (R && R.active.length && tr.ahead(R.s0 - dist - 20, v.s) < R.s1 - R.s0 + dist + 20) return true;
+    for (const p of game.projectiles.list) {
+      if (p.kind === 'rocket' || p.owner === v) continue;
+      const d = rel(p.s);
+      if (d > -2 && d < dist + 10 && Math.abs(p.d - v.d) < 6) return true;
+    }
+    return false;
+  }
+
+  // Decide si mantener el botón de derrapar y, mientras se derrapa, convierte el giro que se
+  // quiere en posición de stick (la dirección efectiva derrapando es lado × 0,45…1,25).
+  driftControl(dt, game, steerRaw, speed, busy) {
+    const v = this.v;
+    this.driftCool = Math.max(0, this.driftCool - dt);
+    const top = v.maxSpeed * v.speedMul;
+    const look = Math.max(30, speed * 1.4);
+    const needNow = this.curveNeed(v.s, 2, 18, speed);
+    const needLong = this.curveNeed(v.s, 2, look, speed);
+    const inCurve = Math.abs(needLong) >= AI_DRIFT.minNeed && Math.abs(needNow) >= AI_DRIFT.minNeed * 0.8 && Math.sign(needNow) === Math.sign(needLong);
+    const d = v.drift;
+    // hacia dónde va de lado respecto a la pista: derrapando, la trasera se abre hacia fuera
+    const P = this.track.pointAt(v.s);
+    const vd = v.vx * P.rx + v.vz * P.rz;
+    const wall = LIMIT - 2 * v.size; // d del centro del camión al tocar la barrera
+    if (d) {
+      // en curva: el giro deseado pasa a posición de stick (a favor cierra, en contra abre)
+      // derrapando se cierra hacia el lado de dentro (la trasera se abre): así no se acerca a la barrera
+      const inside = clamp(0.06 * (4 - d.side * v.d), 0, 0.4);
+      const e = steerRaw * d.side + inside;
+      const k = clamp((e - DRIFT.steerMid) / (DRIFT.steerTight - DRIFT.steerMid), -1, 1);
+      this.driftOut = e < 0.2 ? this.driftOut + dt : 0;
+      const ahead = this.curveNeed(v.s, 0, Math.max(12, speed * 0.4), speed) * d.side;
+      // por fuera de la curva, cerca de la barrera (o yendo hacia ella): suelta antes de rozarla
+      const outer = -d.side * (v.d + vd * 0.6);
+      const release = busy || this.driftOut > 0.25 || e < -0.1 || outer > wall - 2.5 || ahead < AI_DRIFT.exitNeed ||
+        d.level >= AI_DRIFT.maxLevel(this.skill) || this.hazardAhead(game, speed * 1.2);
+      if (release) {
+        if (d.level === 0) this.driftCurve = false; // no le ha salido: en esta curva ya no lo intenta
+        this.driftHold = false;
+        this.driftCool = AI_DRIFT.cool;
+        return { steer: clamp(steerRaw, -1, 1), drift: false };
+      }
+      return { steer: k * d.side, drift: true };
+    }
+    // sin derrapar: cada curva se decide una vez si se derrapa en ella
+    if (!inCurve) this.driftCurve = null;
+    else if (this.driftCurve === null) this.driftCurve = Math.random() < AI_DRIFT.chance(this.skill);
+    const want = inCurve && this.driftCurve && !busy && this.driftCool <= 0 && v.onGround && v.state === 'ok' &&
+      speed >= DRIFT.minSpeed * top * 1.05 && Math.abs(steerRaw) >= DRIFT.minSteer && Math.sign(steerRaw) === Math.sign(needLong) &&
+      -Math.sign(needLong) * (v.d + vd * 0.6) < wall - 9 &&
+      !this.hazardAhead(game, look + speed * 0.8);
+    // si el derrape se canceló (golpe, salto...), hay que soltar el botón un momento para volver a empezar
+    this.driftHold = want && !v.driftLock;
+    return { steer: clamp(steerRaw, -1, 1), drift: this.driftHold };
   }
 
   // Carriles por los que se puede cruzar un foso (puentes y rampas que no ocupan todo el ancho).
@@ -126,7 +220,8 @@ export class AIDriver {
     if (this.noiseT <= 0) { this.noiseT = rand(0.3, 1.2); this.noise = rand(-0.12, 0.12) / this.skill; }
     const target = Math.atan2(P.z - v.z, P.x - v.x);
     const err = wrapAng(target - v.th);
-    let steer = Math.max(-1, Math.min(1, err * (ml !== null ? 5 : 2.6) + (this.careful ? 0 : this.noise)));
+    const steerRaw = err * (ml !== null ? 5 : 2.6) + (this.careful ? 0 : this.noise);
+    let steer = Math.max(-1, Math.min(1, steerRaw));
     let throttle = 1, brake = 0;
     if (this.careful && speed > 27) { throttle = 0; brake = speed > 31 ? 0.5 : 0; }
     // cruce sin hueco libre ahora mismo: los pilotos hábiles levantan el pie y esperan el hueco
@@ -140,9 +235,16 @@ export class AIDriver {
     const curv = Math.abs(tr.curvatureAhead(v.s, 25));
     if (curv > 0.9 && speed > 30) throttle = Math.min(throttle, 0.5);
 
+    // derrape: no con nada que esquivar, frenando, en un puente estrecho ni mirando mal
+    const busy = rl !== null || ml !== null || this.careful || brake > 0 || Math.abs(err) > 0.9;
+    const dr = this.driftControl(dt, game, steerRaw, speed, busy);
+    if (!busy) steer = dr.steer;
+    const drift = dr.drift;
+
     // objetos
     let useItem = false;
     if (v.item === 'jump' && this.rocketClose(game)) useItem = true;
+    else if (v.item === 'giant') useItem = true; // el modo gigante, nada más cogerlo
     else if (v.item) {
       this.itemDelay -= dt;
       if (this.itemDelay <= 0) {
@@ -170,7 +272,7 @@ export class AIDriver {
     } else {
       this.itemDelay = rand(0.8, 3);
     }
-    return { steer, throttle, brake, item: useItem };
+    return { steer, throttle, brake, item: useItem, drift };
   }
 
   // Olas: por el lado seco (si decide intentarlo en esta pasada). Saurópodo: por el hueco entre

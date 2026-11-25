@@ -12,9 +12,11 @@ export const ITEM_SVG = {
   tire: `<svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="22" fill="#222" stroke="#555" stroke-width="3"/><circle cx="32" cy="32" r="10" fill="#ffd400"/><g stroke="#666" stroke-width="5">${[0, 45, 90, 135, 180, 225, 270, 315].map((a) => `<path d="M32 4v8" transform="rotate(${a} 32 32)"/>`).join('')}</g><path d="M4 50l8-4M2 40l9-1" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>`,
   barrel: `<svg viewBox="0 0 64 64"><rect x="16" y="8" width="32" height="48" rx="6" fill="#d42a1a" stroke="#fff" stroke-width="3"/><rect x="16" y="18" width="32" height="5" fill="#ffd400"/><rect x="16" y="41" width="32" height="5" fill="#ffd400"/><path d="M32 25l-5 9h4l-2 7 7-10h-4l3-6z" fill="#fff"/></svg>`,
   rocket: `<svg viewBox="0 0 64 64"><path d="M50 14c-10 0-20 6-26 16l10 10c10-6 16-16 16-26z" fill="#eee" stroke="#fff" stroke-width="2"/><circle cx="40" cy="24" r="4" fill="#1f8fff"/><path d="M24 30l-10 2 6 6zM34 40l-2 10-6-6z" fill="#ff3030"/><path d="M22 42c-4 2-8 6-10 10 4-2 8-6 10-10z" fill="#ffd400"/><path d="M50 14l-6 0 6 6z" fill="#ff3030"/></svg>`,
+  // modo gigante: camión enorme con flechas hacia fuera
+  giant: `<svg viewBox="0 0 64 64"><path d="M4 12l9 0-3 3 5 5-3 3-5-5-3 3zM60 12l-9 0 3 3-5 5 3 3 5-5 3 3z" fill="#ffd400"/><rect x="12" y="20" width="40" height="18" rx="4" fill="#ff3a2a" stroke="#fff" stroke-width="3"/><rect x="34" y="23" width="13" height="8" rx="2" fill="#9fe3ff"/><circle cx="20" cy="46" r="10" fill="#222" stroke="#fff" stroke-width="3"/><circle cx="44" cy="46" r="10" fill="#222" stroke="#fff" stroke-width="3"/><circle cx="20" cy="46" r="3.5" fill="#ffd400"/><circle cx="44" cy="46" r="3.5" fill="#ffd400"/></svg>`,
 };
-export const ITEM_NAME = { nitro: 'Nitro', jump: 'Supersalto', wave: 'Onda expansiva', tire: 'Neumático loco', barrel: 'Barril explosivo', rocket: 'Cohete buscador' };
-const ITEM_KEYS = Object.keys(ITEM_SVG);
+export const ITEM_NAME = { nitro: 'Nitro', jump: 'Supersalto', wave: 'Onda expansiva', tire: 'Neumático loco', barrel: 'Barril explosivo', rocket: 'Cohete buscador', giant: 'Modo gigante' };
+const ITEM_KEYS = Object.keys(ITEM_SVG).filter((k) => k !== 'giant'); // la ruleta no enseña el gigante: es raro
 
 
 export function fmtTime(t) {

@@ -926,7 +926,7 @@ export class Obstacles {
       if (!on) continue;
       // golpe de agua: un aviso al entrar en la franja mojada
       for (const v of vehicles) {
-        const inZone = v.state === 'ok' && v.onGround && tr.ahead(w.s0, v.s) < w.s1 - w.s0;
+        const inZone = v.state === 'ok' && v.onGround && !(v.giant > 0) && tr.ahead(w.s0, v.s) < w.s1 - w.s0;
         const wet = inZone && (w.side < 0 ? v.d + LIMIT : LIMIT - v.d) < tr.waveAt(w, v.s, this.time);
         if (wet && !v.waveWet) {
           v.events.push({ type: 'ola' });

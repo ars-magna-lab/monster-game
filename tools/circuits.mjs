@@ -1,6 +1,7 @@
 // Captura y carrera simulada de cada circuito. Uso: node tools/circuits.mjs [id...]
 // Con --medir [--vueltas N] [--carreras N] [--dif facil,normal,dificil] no hace capturas y saca
 // estadísticas de la IA (golpes, caídas, reapariciones), de objetos y de puestos.
+// --camion N elige el camión del humano simulado (0..5; por defecto el de los ajustes).
 import puppeteer from 'puppeteer-core';
 import { resolve } from 'node:path';
 const argv = process.argv.slice(2);
@@ -9,7 +10,8 @@ const medir = argv.includes('--medir');
 const laps = +opt('--vueltas', medir ? 3 : 1);
 const races = +opt('--carreras', 1);
 const diffs = opt('--dif', medir ? 'facil,normal,dificil' : '').split(',').filter(Boolean);
-const valued = new Set(['--vueltas', '--carreras', '--dif']);
+const truck = opt('--camion', null);
+const valued = new Set(['--vueltas', '--carreras', '--dif', '--camion']);
 const ids = argv.filter((a, i) => !a.startsWith('--') && !valued.has(argv[i - 1]));
 const b = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', headless: 'new', protocolTimeout: 3600000, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 const p = await b.newPage();
@@ -24,18 +26,25 @@ const list = ids.length ? ids : await p.evaluate(() => [...document.querySelecto
 // Corre una carrera con piloto automático y cuenta lo que le pasa a cada camión
 const runRace = (args) => window.__mmRace(args);
 await p.evaluate(() => {
-  window.__mmRace = ({ id, laps, diff }) => {
+  window.__mmRace = ({ id, laps, diff, truck }) => {
     const g = window.__mm;
     g.settings.circuit = id; g.loadCircuit(id);
     if (diff) g.settings.diff = diff;
+    if (truck !== null && truck !== undefined) g.settings.truck = +truck;
     g.settings.laps = laps; g.autopilot = true; g.startRace(); g.countdown = 0.01;
-    const KINDS = ['log', 'ball', 'boom', 'net', 'fallPit', 'fallWater', 'tired', 'barreled', 'rocketed', 'waved', 'meteor', 'car', 'ola', 'leg'];
+    const KINDS = ['log', 'ball', 'boom', 'net', 'fallPit', 'fallWater', 'tired', 'barreled', 'rocketed', 'waved', 'meteor', 'car',
+      'ola', 'leg', 'scrape', 'wall', 'driftBoost', 'crushTruck', 'crushed', 'giant'];
+    // chafar, según cómo: gigante, cayendo encima o por tamaño
+    for (const h of ['giant', 'fall', 'size']) KINDS.push('crushTruck:' + h, 'crushed:' + h);
     const per = new Map(g.vehicles.map((v) => [v, { stuck: 0, wrong: 0, ...Object.fromEntries(KINDS.map((k) => [k, 0])) }]));
     const items = { launch: { tire: 0, barrel: 0, rocket: 0 }, hit: { tire: 0, barrel: 0, rocket: 0 }, selfBarrel: 0, rocketDodged: 0, rocketNoTarget: 0, rolls: [] };
     // eventos: se cuentan antes de que handleEvents vacíe la lista
     const origHandle = Object.getPrototypeOf(g).handleEvents;
     g.handleEvents = function () {
-      for (const v of this.vehicles) for (const e of v.events) if (e.type in per.get(v)) per.get(v)[e.type]++;
+      for (const v of this.vehicles) for (const e of v.events) {
+        if (e.type in per.get(v)) per.get(v)[e.type]++;
+        if (e.how && e.type + ':' + e.how in per.get(v)) per.get(v)[e.type + ':' + e.how]++;
+      }
       return origHandle.call(this);
     };
     // reapariciones fuera de las caídas: por atasco o por dirección contraria
@@ -75,7 +84,7 @@ await p.evaluate(() => {
     const finish = [...g.vehicles].sort((a, b) => (a.finished && b.finished ? a.finishPlace - b.finishPlace : a.finished ? -1 : b.finished ? 1 : b.progress - a.progress));
     return {
       id, diff: g.settings.diff, L: Math.round(g.track.length),
-      trucks: g.vehicles.map((v) => ({ name: v.def.name, ai: !v.isPlayer, finished: v.finished, time: v.finished ? +v.finishTime.toFixed(1) : null, laps: v.lapTimes.map((x) => +x.toFixed(1)), place: finish.indexOf(v) + 1, s: Math.round(v.s), c: per.get(v) })),
+      trucks: g.vehicles.map((v) => ({ name: v.def.name, size: v.baseSize ?? v.size, ai: !v.isPlayer, finished: v.finished, time: v.finished ? +v.finishTime.toFixed(1) : null, laps: v.lapTimes.map((x) => +x.toFixed(1)), place: finish.indexOf(v) + 1, s: Math.round(v.s), c: per.get(v) })),
       items,
     };
   };
@@ -83,7 +92,7 @@ await p.evaluate(() => {
 
 if (!medir) {
   for (const id of list) {
-    const r = await p.evaluate(runRace, { id, laps, diff: diffs[0] });
+    const r = await p.evaluate(runRace, { id, laps, diff: diffs[0], truck });
     const ai = r.trucks.filter((t) => t.ai);
     const sum = (k) => ai.reduce((a, t) => a + t.c[k], 0);
     const out = { id, L: r.L, res: r.trucks.map((t) => (t.finished ? t.time : 'NO ' + t.s)), ia: Object.fromEntries(['log', 'ball', 'boom', 'net', 'fallPit', 'fallWater', 'meteor', 'car', 'ola', 'leg', 'stuck', 'wrong'].map((k) => [k, sum(k)])) };
@@ -97,7 +106,7 @@ if (!medir) {
   for (const diff of diffs) {
     for (const id of list) {
       for (let k = 0; k < races; k++) {
-        const r = await p.evaluate(runRace, { id, laps, diff });
+        const r = await p.evaluate(runRace, { id, laps, diff, truck });
         all.push(r);
         console.error(`${diff} ${id} #${k + 1}: ${r.trucks.map((t) => (t.finished ? t.time : 'NO')).join(' ')}`);
       }
@@ -105,7 +114,8 @@ if (!medir) {
   }
   const f = (x) => x.toFixed(2);
   // tabla 1: lo que le pasa a la IA, por camión y vuelta
-  const COLS = ['log', 'ball', 'boom', 'net', 'fallPit', 'fallWater', 'meteor', 'car', 'ola', 'leg', 'stuck', 'wrong'];
+  // scrape: roce fuerte con la barrera; wall: choque con un borde de foso o de rampa
+  const COLS = ['log', 'ball', 'boom', 'net', 'fallPit', 'fallWater', 'meteor', 'car', 'ola', 'leg', 'stuck', 'wrong', 'scrape', 'wall'];
   console.log('\n## IA: sucesos por camión y vuelta (vuelta media en s)');
   console.log(['dif', 'circuito', 'n', ...COLS, 'vuelta', 'sin acabar'].join('\t'));
   for (const diff of diffs) {
@@ -118,8 +128,23 @@ if (!medir) {
       console.log([diff, id, n, ...COLS.map((k) => f(ai.reduce((a, t) => a + t.c[k], 0) / n)), avgLap.toFixed(1), ai.filter((t) => !t.finished).length].join('\t'));
     }
   }
+  // tabla 1b: sucesos nuevos por camión (turbos de derrape, chafar, ser chafado, modo gigante)
+  const NEW = ['driftBoost', 'giant', 'crushTruck', 'crushed', 'crushTruck:size', 'crushed:size', 'crushTruck:fall', 'crushed:fall', 'crushTruck:giant', 'crushed:giant'];
+  console.log('\n## Sucesos por camión y vuelta (driftBoost: turbos de derrape; crushTruck: chafa a otro; crushed: le chafan; :size por tamaño, :fall cayendo encima, :giant siendo gigante)');
+  console.log(['dif', 'camión', 'tamaño', 'n', ...NEW].join('\t'));
+  for (const diff of diffs) {
+    const rs = all.filter((r) => r.diff === diff);
+    const names = [...new Set(rs.flatMap((r) => r.trucks.map((t) => t.name)))];
+    for (const nm of names) {
+      const ts = rs.map((r) => r.trucks.find((t) => t.name === nm));
+      const n = ts.length * laps;
+      console.log([diff, nm + (ts.some((t) => !t.ai) ? ' [humano auto]' : ''), ts[0].size, n, ...NEW.map((k) => f(ts.reduce((a, t) => a + t.c[k], 0) / n))].join('\t'));
+    }
+    const ai = rs.flatMap((r) => r.trucks.filter((t) => t.ai));
+    console.log([diff, 'IA (todos)', '-', ai.length * laps, ...NEW.map((k) => f(ai.reduce((a, t) => a + t.c[k], 0) / (ai.length * laps)))].join('\t'));
+  }
   // tabla 2: reparto de objetos por puesto
-  const KIND = ['nitro', 'jump', 'wave', 'tire', 'barrel', 'rocket'];
+  const KIND = ['nitro', 'jump', 'wave', 'tire', 'barrel', 'rocket', 'giant'];
   console.log('\n## Objetos de la IA por puesto (% de cada puesto)');
   console.log(['puesto', 'n', ...KIND].join('\t'));
   const rolls = all.flatMap((r) => r.items.rolls);

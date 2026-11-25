@@ -214,6 +214,16 @@ export class Sound {
         this.noiseBurst(1.2, 0.6 * v, 'bandpass', 1800, 600, 1.2);
         this.osc('sawtooth', 300, 900, 0.6, 0.12 * v);
         break;
+      case 'giant': // modo gigante: zumbido grave que sube y fanfarria corta
+        this.osc('sawtooth', 55, 165, 0.9, 0.18 * v);
+        this.osc('square', 82, 247, 0.9, 0.08 * v);
+        this.noiseBurst(0.7, 0.3 * v, 'lowpass', 300, 1200, 1);
+        [392, 523, 784].forEach((f, i) => this.osc('triangle', f, f, 0.18, 0.18 * v, 0.55 + i * 0.09));
+        break;
+      case 'stomp': // pisada del gigante: golpe grave y flojo
+        this.osc('sine', 70, 32, 0.22, 0.45 * v);
+        this.noiseBurst(0.12, 0.2 * v, 'lowpass', 260, 80);
+        break;
       case 'click': this.osc('triangle', 600, 900, 0.07, 0.2 * v); break;
       case 'wrong': this.osc('square', 300, 200, 0.3, 0.15 * v); break;
     }

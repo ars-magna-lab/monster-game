@@ -26,6 +26,28 @@ export const DRIFT = {
   hop: 0.25,        // duración del saltito visual al empezar
 };
 
+// Modo gigante (el objeto de la superremontada): crece, corre como con turbo, no le afecta nada
+// y chafa a quien toque.
+export const GIANT = {
+  time: 6,        // segundos que dura
+  scale: 1.6,     // tamaño
+  grow: 0.3,      // segundos que tarda en crecer y en encoger
+  speed: 1.35,    // velocidad punta (como un turbo algo más fuerte)
+  accel: 2.2,     // aceleración
+  blink: 1,       // parpadea el último segundo
+  stomp: 0.42,    // segundos entre pisadas
+};
+
+// Chafado: aplastado y casi parado un momento; después no se le puede volver a chafar en un rato.
+export const CRUSH = {
+  min: 0.9,       // segundos parado con poca diferencia de tamaño
+  max: 1.4,       // con mucha diferencia, si es el gigante o si le caen encima
+  immune: 2.5,    // segundos sin poder ser chafado otra vez (tras levantarse)
+  flatY: 0.3,     // alto aplastado
+  flatXZ: 1.15,   // ancho y largo aplastado
+  rise: 0.45,     // segundos que tarda en recuperarse (con rebote)
+};
+
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const wrapAng = (a) => {
   while (a > Math.PI) a -= 2 * Math.PI;
@@ -38,7 +60,8 @@ export class Vehicle {
     this.def = def;
     this.track = track;
     this.isPlayer = isPlayer;
-    this.size = def.size || 1;
+    this.baseSize = def.size || 1;
+    this.size = this.baseSize;
     const st = def.stats;
     this.maxSpeed = 31 + st.speed * 2.3;
     this.accel = 8 + st.accel * 2.3;
@@ -73,6 +96,28 @@ export class Vehicle {
     this.cool = {};
     // derrape: { side: -1 | 1, t: carga, level: 0..3 } mientras dura; driftYaw y hopT son solo visuales
     this.drift = null; this.driftYaw = 0; this.hopT = 0; this.driftLock = false;
+    // modo gigante: giant segundos que quedan, giantK 0..1 cuánto ha crecido
+    this.giant = 0; this.giantK = 0; this.stompT = 0; this.size = this.baseSize;
+    // chafado: squash segundos parado (de squashDur), squashT tiempo desde que le chafaron (visual)
+    this.squash = 0; this.squashDur = 0; this.squashT = 9; this.crushImmune = 0;
+  }
+
+  // ¿Se le puede chafar ahora? (no reapareciendo, ni invulnerable, ni gigante, ni recién chafado)
+  get crushable() {
+    return this.state === 'ok' && this.invuln <= 0 && this.giant <= 0 && this.squash <= 0 && this.crushImmune <= 0;
+  }
+
+  // Le chafan: se aplasta y se queda casi parado dur segundos. by: quien le chafa;
+  // how: 'giant' (el gigante), 'fall' (le cae encima) o 'size' (le embiste uno más grande).
+  crush(by, dur, how = 'size') {
+    if (!this.crushable) return false;
+    this.squash = dur; this.squashDur = dur; this.squashT = 0;
+    this.crushImmune = dur + CRUSH.immune;
+    if (this.drift) { this.endDrift(false); this.driftLock = true; }
+    this.boost = 0;
+    this.events.push({ type: 'crushed', by, how });
+    by.events.push({ type: 'crushTruck', victim: this, how });
+    return true;
   }
 
   get speed() { return Math.hypot(this.vx, this.vz); }
@@ -106,7 +151,7 @@ export class Vehicle {
   }
 
   hit({ dirX = 0, dirZ = 0, push = 0, up = 0, speedMul = 1, stun = 0, kind = 'hit' }) {
-    if (this.invuln > 0 || this.hitCool > 0 || this.state !== 'ok') return false;
+    if (this.invuln > 0 || this.hitCool > 0 || this.state !== 'ok' || this.giant > 0) return false;
     const k = this.stunMul;
     this.vx *= speedMul; this.vz *= speedMul;
     this.vx += dirX * push * k; this.vz += dirZ * push * k;
@@ -122,7 +167,7 @@ export class Vehicle {
   }
 
   catchNet(net) {
-    if (this.state !== 'ok' || this.invuln > 0) return false;
+    if (this.state !== 'ok' || this.invuln > 0 || this.giant > 0) return false;
     this.state = 'caught';
     this.stateTimer = 1.1;
     this.netCaught = net;
@@ -143,6 +188,11 @@ export class Vehicle {
       this.wasGround = false;
       this.invuln = Math.max(this.invuln, 0.6);
       this.events.push({ type: 'jump' });
+    } else if (it === 'giant') {
+      this.giant = GIANT.time;
+      this.stompT = GIANT.stomp;
+      this.stun = 0; this.spinDur = 0; this.spin = 0;
+      this.events.push({ type: 'giant' });
     } else if (it === 'wave') {
       game.shockwave(this);
       this.events.push({ type: 'wave' });
@@ -162,6 +212,10 @@ export class Vehicle {
     this.hitCool = Math.max(0, this.hitCool - dt);
     if (this.stun > 0) this.stun = Math.max(0, this.stun - dt);
     if (this.stall > 0) this.stall = Math.max(0, this.stall - dt);
+    this.crushImmune = Math.max(0, this.crushImmune - dt);
+    this.squashT += dt;
+    if (this.squash > 0) this.squash = Math.max(0, this.squash - dt);
+    this.updateGiant(dt);
     if (this.spinDur > 0) {
       this.spinT += dt;
       if (this.spinT >= this.spinDur) { this.spinDur = 0; this.spin = 0; }
@@ -174,7 +228,7 @@ export class Vehicle {
 
     if (this.state === 'fallen') { this.updateFallen(dt); return; }
 
-    const stunned = this.stun > 0 || this.state === 'caught';
+    const stunned = this.stun > 0 || this.state === 'caught' || this.squash > 0;
     let fx = Math.cos(this.th), fz = Math.sin(this.th);
     let vF = this.vx * fx + this.vz * fz;
     const steer = this.updateDrift(dt, ctrl, vF, stunned);
@@ -194,12 +248,13 @@ export class Vehicle {
     const vF0 = vF;
 
     if (this.onGround) {
-      const surfMul = SURF_SPEED[this.surf] ?? 1;
-      const maxV = this.maxSpeed * this.speedMul * surfMul * (this.boost > 0 ? 1.32 : 1);
+      // el gigante no se frena en el barro
+      const surfMul = this.giant > 0 && this.surf === 'mud' ? 1 : SURF_SPEED[this.surf] ?? 1;
+      const maxV = this.maxSpeed * this.speedMul * surfMul * (this.giant > 0 ? GIANT.speed : this.boost > 0 ? 1.32 : 1);
       const thr = stunned || this.stall > 0 ? 0 : ctrl.throttle;
       const brk = stunned ? 0 : ctrl.brake;
       if (thr > 0 && vF < maxV) {
-        const a = this.accel * thr * (this.boost > 0 ? 2.2 : 1) * (vF < 0 ? 2 : 1) * (1 - 0.35 * clamp(vF / maxV, 0, 1));
+        const a = this.accel * thr * (this.giant > 0 ? GIANT.accel : this.boost > 0 ? 2.2 : 1) * (vF < 0 ? 2 : 1) * (1 - 0.35 * clamp(vF / maxV, 0, 1));
         vF = Math.min(maxV, vF + a * dt);
       }
       if (brk > 0) {
@@ -211,7 +266,9 @@ export class Vehicle {
         const fr = (2.5 + Math.abs(vF) * 0.04 + (stunned ? 8 : 0)) * dt;
         vF = Math.abs(vF) <= fr ? 0 : vF - Math.sign(vF) * fr;
       }
-      const grip = this.grip * (this.surf === 'mud' ? 0.35 : this.surf === 'ice' ? 0.1 : 1) * (stunned ? 0.35 : 1) * (this.drift ? DRIFT.grip : 1);
+      // chafado: se queda casi parado
+      if (this.squash > 0) vF *= Math.exp(-5 * dt);
+      const grip = this.grip * (this.surf === 'mud' && this.giant <= 0 ? 0.35 : this.surf === 'ice' ? 0.1 : 1) * (stunned ? 0.35 : 1) * (this.drift ? DRIFT.grip : 1);
       const vL0 = vL;
       vL *= Math.exp(-grip * dt);
       // derrapando, lo que la trasera pierde de lado se convierte casi todo en velocidad hacia
@@ -318,6 +375,19 @@ export class Vehicle {
     this.updateMisc(dt, tr, p);
   }
 
+  // Modo gigante: crece y encoge suave; mientras dura no le afecta nada (ni aturdido ni red)
+  updateGiant(dt) {
+    if (this.giant > 0) {
+      this.giant = Math.max(0, this.giant - dt);
+      this.stun = 0;
+      if (this.state === 'caught') { this.state = 'ok'; this.netCaught = null; }
+      if (this.onGround && this.state === 'ok' && (this.stompT -= dt) <= 0) { this.stompT = GIANT.stomp; this.events.push({ type: 'stomp' }); }
+    }
+    const k = clamp(this.giantK + (this.giant > 0 ? dt : -dt) / GIANT.grow, 0, 1);
+    this.giantK = k;
+    this.size = this.baseSize * (1 + (GIANT.scale - 1) * k * k * (3 - 2 * k));
+  }
+
   // Lleva el derrape y devuelve la dirección que se usa para girar este paso
   updateDrift(dt, ctrl, vF, stunned) {
     const steerIn = stunned ? 0 : ctrl.steer;
@@ -395,7 +465,7 @@ export class Vehicle {
     // dirección contraria y atascos
     const tdot = Math.cos(this.th - p.th);
     if (tdot < -0.4 && this.vF > 3) this.wrongT += dt; else this.wrongT = 0;
-    if (this.control.throttle > 0 && this.speed < 2 && this.state === 'ok') this.stuckT += dt; else this.stuckT = 0;
+    if (this.control.throttle > 0 && this.speed < 2 && this.state === 'ok' && this.squash <= 0) this.stuckT += dt; else this.stuckT = 0;
 
     // suspensión
     this.compV += (-95 * this.comp - 9 * this.compV) * dt;
@@ -432,10 +502,22 @@ export class Vehicle {
     if (this.hopT > 0) this.hopT = Math.max(0, this.hopT - dt);
     const hop = this.hopT > 0 ? Math.sin(Math.PI * (1 - this.hopT / DRIFT.hop)) * 0.5 * this.size : 0;
     m.position.set(this.x, this.y + hop, this.z);
+    // tamaño: gigante y aplastado (al chafarle: plano y ancho; se levanta con un rebote)
+    let sy = 1;
+    if (this.squashT < this.squashDur + CRUSH.rise) {
+      const t = this.squashT;
+      if (t < 0.07) sy = 1 - (1 - CRUSH.flatY) * (t / 0.07);
+      else if (t < this.squashDur) sy = CRUSH.flatY;
+      else { const u = (t - this.squashDur) / CRUSH.rise; sy = 1 - (1 - CRUSH.flatY) * Math.exp(-5 * u) * Math.cos(3 * Math.PI * u); }
+    }
+    const sxz = 1 + (CRUSH.flatXZ - 1) * clamp((1 - sy) / (1 - CRUSH.flatY), 0, 1.5);
+    m.scale.set(this.size * sxz, this.size * sy, this.size * sxz);
     m.rotation.order = 'YXZ';
     m.rotation.set(-this.pitch, Math.PI / 2 - this.th - this.driftYaw + this.spin, this.roll);
     // parpadea solo al reaparecer o al salir de la red; el supersalto protege sin parpadear
-    const blink = this.blink > 0 && this.state === 'ok' ? Math.floor(this.blink * 12) % 2 === 0 : true;
+    // el gigante parpadea el último segundo, avisando de que se acaba
+    const blink = this.blink > 0 && this.state === 'ok' ? Math.floor(this.blink * 12) % 2 === 0
+      : this.giant > 0 && this.giant < GIANT.blink ? Math.floor(this.giant * 14) % 2 === 0 : true;
     m.visible = blink;
     animateTruck(this.parts, {
       wheelSpin: (this.onGround ? this.vF + this.rev * 28 : this.control.throttle * 30) * dt / WHEEL_R,
