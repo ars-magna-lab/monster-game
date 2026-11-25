@@ -7,7 +7,7 @@ const rand = (a, b) => a + Math.random() * (b - a);
 // huecos entre las patas del saurópodo (patas en d = -6,5 y +5,5; ver obstacles.js)
 const LEG_GAPS = [-0.5, 9.9];
 // parte de las pasadas en que se aparta del tiranosaurio (según la habilidad)
-const REX_DODGE = (skill) => Math.min(0.9, 0.2 + 0.25 * skill);
+const REX_DODGE = (skill) => Math.min(0.9, 0.1 + 0.25 * skill);
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
 // Derrape de la IA. Según la habilidad (fácil 0,7, normal 1, difícil 1,5): en qué parte de las

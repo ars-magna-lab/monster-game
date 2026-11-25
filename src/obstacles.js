@@ -1074,7 +1074,7 @@ export class Obstacles {
           for (const v of vehicles) {
             if (v.state !== 'ok' || R.side * v.d < 0) continue;
             const a = tr.ahead(v.s, R.s), eta = a / Math.max(8, v.vF);
-            if (a < tr.length / 2 && eta > REX.warn && eta < REX.warn + 0.4) { prey = true; break; }
+            if (a < tr.length / 2 && eta > REX.warn && eta < REX.warn + 0.6) { prey = true; break; }
           }
         }
         if (R.t >= R.wait || prey) {
@@ -1565,7 +1565,7 @@ const SAURO_R = 1.3;
 // cada cuánto muerde (s), cuánto avisa, cuánto dura el mordisco y cuánto tarda en volver; la
 // zona del mordisco es la mitad del camino de su lado (desde d = -dMin hasta la barrera, dMax)
 // y ±half m a lo largo de la pista
-export const REX = { hipD: 19.5, hipY: 10, neck: [8.2, 4.6, 0], every: [4.5, 5.5], warn: 1.1, bite: 0.5, back: 0.6, early: 0.7, dMin: 0.3, dMax: 15, half: 7 };
+export const REX = { hipD: 19.5, hipY: 10, neck: [8.2, 4.6, 0], every: [4.6, 5.4], warn: 1.1, bite: 0.5, back: 0.6, early: 0.8, dMin: 0.3, dMax: 15, half: 7 };
 
 // Tiranosaurio mirando hacia +x (la pista): patas y cola; tronco con brazos y cuello (gira en la
 // cadera); cabeza (gira en el cuello) y mandíbula. El tronco va respecto a la cadera, la cabeza
