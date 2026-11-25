@@ -1660,7 +1660,7 @@ class Game {
       let near = Infinity;
       for (const view of this.views) near = Math.min(near, view.camera.position.distanceToSquared(v.mesh.position));
       if (near > 90 * 90) return;
-      few = 0.45;
+      few = 0.6;
     }
     const lv = v.drift.level;
     const th = v.th + v.driftYaw; // la carrocería se dibuja girada
