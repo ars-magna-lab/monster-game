@@ -874,14 +874,17 @@ class Game {
     p.newLapRecord = isFinite(best) && (!this.records[lk] || best < this.records[lk]);
     if (p.newLapRecord) this.records[lk] = best;
     saveJSON('megamonstruos.records', this.records);
-    if (this.humans.every((h) => h.finished)) this.endRace();
+    if (this.humans.every((h) => h.finished)) this.endRace(p);
     else if (this.allDoneT === null) this.allDoneT = 45; // el otro jugador tiene 45 s para llegar
   }
 
-  endRace() {
+  // p: el jugador que acaba de llegar (si la carrera acaba por tiempo, nadie)
+  endRace(p) {
     if (this.state === 'finished') return;
     this.state = 'finished';
-    this.resultsT = 3.2;
+    // con copa, los resultados esperan a que se vea la celebración entera: la copa vuela, el camión
+    // la levanta y la cámara le da una vuelta (oro 9 s; plata y bronce 7,5 s; sin copa 3,5 s)
+    this.resultsT = this.resultsT0 = p && p.finishPlace <= 3 ? (p.finishPlace === 1 ? 9 : 7.5) : 3.5;
     this.sound.musicStop();
   }
 
@@ -1117,6 +1120,11 @@ class Game {
       let ctrl;
       if (v.isPlayer && !v.finished && !this.autopilot) ctrl = ctrls[v.human];
       else ctrl = this.drivers.get(v).control(dt, this);
+      // con la copa encima, vuelta de honor: despacio, para que se vea bien, y sin que nadie lo tumbe
+      if (v.isPlayer && v.finished && this.cups.heldBy(v)) {
+        if (v.vF > v.maxSpeed * 0.4) ctrl = { ...ctrl, throttle: 0, brake: v.vF > v.maxSpeed * 0.6 ? 0.35 : 0, drift: false };
+        v.invuln = Math.max(v.invuln, 0.3);
+      }
       if (ctrl.item) v.useItem(this);
       v.update(dt, ctrl, this);
     }
@@ -1554,7 +1562,7 @@ class Game {
         if (menu) {
           // sin Espacio: es la tecla del objeto y alguien podría seguir pulsándola al llegar
           if (inp.pressed('Enter', 'NumpadEnter', 'PadA', 'PadStart')) menu.ok();
-        } else if (this.resultsT > 0.4 && inp.pressed('Enter', 'NumpadEnter', 'PadA', 'PadStart')) this.resultsT = 0.01;
+        } else if (this.resultsT > 0.4 && (inp.pressed('Enter', 'NumpadEnter', 'PadStart') || (this.resultsT0 - this.resultsT > 3 && inp.pressed('PadA')))) this.resultsT = 0.01; // la A no salta los 3 primeros segundos: es el acelerador
         break;
     }
     if (inp.pressed('KeyM')) this.toggleMute();
@@ -1779,7 +1787,7 @@ class Game {
         view.camPos.set(p.x + fx * along - fz * lat, h0 + (ch.want.y - h0) * e, p.z + fz * along + fx * lat);
         view.camLook.set(p.x, p.y + 1.8 * big, p.z).lerp(ch.look, e);
       }
-    } else if (p.finished && (st === 'race' || this.resultsT < 2.2) && !this.cups.ceremony(p)) {
+    } else if (p.finished && (st === 'race' || this.resultsT < 2.2 || this.cups.heldBy(p)) && !this.cups.ceremony(p)) {
       const a = this.time * 0.25 + view.idx * Math.PI;
       // con una copa encima, la cámara mira por encima del camión: así el camión y la copa quedan
       // en la parte de abajo de la pantalla y no los tapa el «¡GANASTE!» del centro

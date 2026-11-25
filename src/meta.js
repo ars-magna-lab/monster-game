@@ -8,9 +8,9 @@ import { buildCupGeometry } from './copa.js';
 // Por puesto: color, tamaño esperando en la meta, tamaño sobre el camión, veces que la levanta,
 // altura de cada levantamiento (m), confeti por levantamiento y sonido
 const TIERS = [
-  { name: 'oro', color: 0xffc81e, emissive: 0x8a5a00, scale: 1.7, held: 1.0, lifts: 2, lift: 2.6, confetti: 130, sound: 'trophy', msg: '¡LA COPA ES TUYA!' },
-  { name: 'plata', color: 0xdfe6ef, emissive: 0x4a5866, scale: 1.45, held: 0.85, lifts: 1, lift: 2.0, confetti: 50, sound: 'trophySmall', msg: '¡COPA DE PLATA!' },
-  { name: 'bronce', color: 0xd0813c, emissive: 0x5a2c08, scale: 1.3, held: 0.75, lifts: 1, lift: 1.6, confetti: 30, sound: 'trophySmall', msg: '¡COPA DE BRONCE!' },
+  { name: 'oro', color: 0xffc81e, emissive: 0x8a5a00, scale: 1.7, held: 1.0, lifts: 4, lift: 2.6, confetti: 90, sound: 'trophy', msg: '¡LA COPA ES TUYA!' },
+  { name: 'plata', color: 0xdfe6ef, emissive: 0x4a5866, scale: 1.45, held: 0.85, lifts: 2, lift: 2.0, confetti: 45, sound: 'trophySmall', msg: '¡COPA DE PLATA!' },
+  { name: 'bronce', color: 0xd0813c, emissive: 0x5a2c08, scale: 1.3, held: 0.75, lifts: 2, lift: 1.6, confetti: 30, sound: 'trophySmall', msg: '¡COPA DE BRONCE!' },
 ];
 // Dónde espera la copa: sobre la línea de meta, encima del travesaño del pórtico (acaba a 12,3 m),
 // para que se vea desde el principio de la recta por encima del propio camión; la dorada mide
