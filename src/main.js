@@ -12,6 +12,7 @@ import { Projectiles } from './projectiles.js';
 import { FX } from './particles.js';
 import { Sound } from './audio.js';
 import { Input } from './input.js';
+import { MenuNav } from './menunav.js';
 import { HUD, fmtTime } from './hud.js';
 import { setAnisotropy, checkerTex, softDotTex, setTexTheme } from './textures.js';
 import { CIRCUITS, circuitById, pitText } from './circuits.js';
@@ -266,6 +267,8 @@ class Game {
     on('btn-sound', () => this.toggleMute());
     on('btn-music', () => this.toggleMusic());
     on('btn-pause', () => this.pause());
+    on('btn-fs', () => this.toggleFullscreen());
+    on('btn-fs-pause', () => this.toggleFullscreen());
     document.querySelectorAll('[data-laps]').forEach((b) => b.addEventListener('click', () => {
       this.sound.play('click'); this.settings.laps = +b.dataset.laps; this.refreshOptions(); this.updateSelect();
     }));
@@ -301,7 +304,69 @@ class Game {
     window.addEventListener('pointerdown', firstGesture, { once: true });
     window.addEventListener('keydown', firstGesture, { once: true });
     window.addEventListener('beforeunload', () => { if (this.win2 && !this.win2.closed) this.win2.close(); });
+    this.buildMenus();
     this.refreshOptions();
+  }
+
+  // Menús con foco para mando y teclado
+  buildMenus() {
+    const els = (...ids) => () => ids.map($);
+    const all = (sel) => () => [...document.querySelectorAll(sel)];
+    // fila de opciones: izquierda/derecha pulsa el botón de al lado del elegido
+    const opt = (sel) => ({
+      els: () => [document.querySelector(sel).closest('.opt')],
+      change: (dir) => {
+        const bs = [...document.querySelectorAll(sel)];
+        const i = Math.max(0, bs.findIndex((b) => b.classList.contains('sel')));
+        bs[(i + dir + bs.length) % bs.length].click();
+      },
+    });
+    this.menus = {
+      title: new MenuNav([
+        { items: all('.corner-btns .round') },
+        {
+          els: () => [this.titleSel === 1 ? $('btn-play2') : $('btn-play')],
+          change: () => { this.titleSel = 1 - this.titleSel; this.sound.play('click'); this.updateTitle(); },
+          ok: () => { this.sound.init(); this.sound.play('click'); this.goSelect(this.titleSel + 1); },
+        },
+      ], { row: 1 }),
+      select: new MenuNav([
+        { els: els('btn-prev', 'btn-next', 'truck-name'), change: (dir) => { this.sound.play('click'); this.changeTruck(dir); } },
+        opt('[data-circuit]'), opt('[data-laps]'), opt('[data-diff]'), opt('[data-quality]'), opt('[data-split]'),
+        { items: els('btn-back', 'btn-start') },
+      ], { ok: () => { this.sound.play('click'); this.confirmSelect(); }, col: 1 }),
+      pause: new MenuNav(['btn-resume', 'btn-restart', 'btn-fs-pause', 'btn-quit'].map((id) => ({ items: els(id) }))),
+      results: new MenuNav([{ items: els('btn-again') }, { items: els('btn-change', 'btn-menu') }]),
+    };
+    // el foco solo se ve al manejar con mando o teclado; el ratón o el dedo lo esconden
+    const hide = (e) => {
+      if (e.type === 'pointermove' && !e.movementX && !e.movementY) return;
+      document.body.classList.remove('nav-on');
+      if (e.type === 'pointerdown') this.menus[this.menuName()]?.sync(e.target);
+    };
+    window.addEventListener('pointermove', hide);
+    window.addEventListener('pointerdown', hide);
+    if (!document.fullscreenEnabled) document.querySelectorAll('.fs-btn').forEach((b) => b.classList.add('hidden'));
+    document.addEventListener('fullscreenchange', () => {
+      const fs = !!document.fullscreenElement;
+      $('btn-fs-pause').textContent = fs ? 'Salir de pantalla completa' : 'Pantalla completa';
+      $('btn-fs').classList.toggle('on', fs);
+    });
+    // si se desconecta en plena carrera un mando que se estaba usando, pausa
+    this.input.onPadLost = () => this.pause();
+  }
+
+  // menú que se está viendo (o null en carrera)
+  menuName() {
+    if (this.state === 'finished') return this.resultsT < -1 ? 'results' : null;
+    return { title: 'title', select: 'select', paused: 'pause' }[this.state] || null;
+  }
+
+  toggleFullscreen() {
+    try {
+      if (document.fullscreenElement) document.exitFullscreen?.()?.catch?.(() => {});
+      else document.documentElement.requestFullscreen?.()?.catch?.(() => {});
+    } catch { /* el navegador no deja */ }
   }
 
   refreshOptions() {
@@ -336,6 +401,7 @@ class Game {
     $('touch').classList.toggle('hidden', !(racing && this.isTouch && this.humans.length === 1));
     $('btn-pause').classList.toggle('hidden', !racing);
     this.setWindow2Waiting(!(racing || name === 'pause' || name === 'results'));
+    for (const [k, m] of Object.entries(this.menus || {})) if (k === name) m.reset(); else m.clear();
   }
 
   updateTitle() {
@@ -384,13 +450,14 @@ class Game {
       if (this.settings.truck2 === this.settings.truck) this.settings.truck2 = (this.settings.truck + 1) % TRUCKS.length;
       this.showSpin = 0;
       this.updateSelect();
+      this.menus.select.reset();
       return;
     }
     this.startRace();
   }
 
   backSelect() {
-    if (this.selectStep === 1) { this.selectStep = 0; this.updateSelect(); return; }
+    if (this.selectStep === 1) { this.selectStep = 0; this.updateSelect(); this.menus.select.reset(); return; }
     this.goTitle();
   }
 
@@ -965,8 +1032,8 @@ class Game {
     const two = this.views.length === 2;
     return this.views.map((view) => {
       const pc = this.input.drive(two ? view.who : 'solo');
-      // la dirección digital del teclado se suaviza para que no dé tirones
-      const rate = pc.steer === 0 ? 10 : Math.sign(pc.steer) !== Math.sign(view.steerSmooth) ? 9 : 6;
+      // la dirección digital del teclado se suaviza para que no dé tirones; la del stick ya es gradual
+      const rate = pc.analog ? 40 : pc.steer === 0 ? 10 : Math.sign(pc.steer) !== Math.sign(view.steerSmooth) ? 9 : 6;
       view.steerSmooth += (pc.steer - view.steerSmooth) * Math.min(1, dt * rate);
       if (Math.abs(view.steerSmooth) < 0.01 && pc.steer === 0) view.steerSmooth = 0;
       return { steer: view.steerSmooth, throttle: pc.throttle, brake: pc.brake, item: pc.item, reset: pc.reset };
@@ -979,7 +1046,7 @@ class Game {
     const inp = this.input;
     if (this.win2 && this.win2.closed) this.onWindow2Closed();
     inp.padEdges();
-    this.menuInput();
+    this.menuInput(dt);
 
     const ctrls = this.readControls(dt);
     if (this.state === 'race') {
@@ -1036,33 +1103,51 @@ class Game {
     inp.endFrame();
   }
 
-  menuInput() {
+  menuInput(dt = 0) {
     const inp = this.input;
-    const ok = () => inp.pressed('Enter', 'NumpadEnter', 'PadA', 'PadStart');
+    const name = this.menuName();
+    const menu = name && this.menus[name];
+    if (!menu) inp.navReset();
+    const dir = menu ? inp.nav(dt) : {};
+    const ok = inp.pressed('Enter', 'NumpadEnter', 'PadA', 'Space');
+    const back = inp.pressed('Escape', 'PadB');
+    // al manejar con mando o teclado se enseña el foco
+    if (menu && (dir.Up || dir.Down || dir.Left || dir.Right || ok || back)) document.body.classList.add('nav-on');
+    if (menu) {
+      if (dir.Up && menu.move(-1)) this.sound.play('click');
+      if (dir.Down && menu.move(1)) this.sound.play('click');
+      // las filas que cambian de valor ya suenan; aquí solo el clic al moverse entre botones
+      if (dir.Left || dir.Right) { const r = menu.current(); if (menu.side(dir.Left ? -1 : 1) && !r?.change) this.sound.play('click'); }
+    }
     switch (this.state) {
       case 'title':
-        if (inp.pressed('ArrowLeft', 'KeyA', 'PadLeft', 'ArrowRight', 'KeyD', 'PadRight')) { this.titleSel = 1 - this.titleSel; this.sound.play('click'); this.updateTitle(); }
-        if (inp.pressed('Digit1', 'Numpad1')) { this.titleSel = 0; this.updateTitle(); }
-        if (inp.pressed('Digit2', 'Numpad2')) { this.titleSel = 1; this.updateTitle(); }
-        if (ok() || inp.pressed('Space') || inp.pressed('Digit1', 'Numpad1', 'Digit2', 'Numpad2')) {
+        if (inp.pressed('Digit1', 'Numpad1', 'Digit2', 'Numpad2')) {
+          this.titleSel = inp.pressed('Digit2', 'Numpad2') ? 1 : 0;
           this.sound.init(); this.sound.play('click'); this.goSelect(this.titleSel + 1);
+        } else if (ok || inp.pressed('PadStart')) {
+          this.sound.init();
+          if (inp.pressed('PadStart')) { this.sound.play('click'); this.goSelect(this.titleSel + 1); } else menu.ok();
         }
+        // enseña los controles del mando en cuanto hay uno conectado
+        { const has = !!inp.padList?.length; if (has !== this.padShown) { this.padShown = has; $('pad-controls').classList.toggle('hidden', !has); } }
         break;
       case 'select':
-        if (inp.pressed('ArrowLeft', 'KeyA', 'PadLeft')) { this.sound.play('click'); this.changeTruck(-1); }
-        if (inp.pressed('ArrowRight', 'KeyD', 'PadRight')) { this.sound.play('click'); this.changeTruck(1); }
-        if (ok() || inp.pressed('Space')) { this.sound.play('click'); this.confirmSelect(); }
-        if (inp.pressed('Escape', 'PadB')) this.backSelect();
+        if (inp.pressed('PadStart')) { this.sound.play('click'); this.confirmSelect(); }
+        else if (ok) menu.ok();
+        else if (back) this.backSelect();
         break;
       case 'race': case 'countdown':
         if (inp.pressed('KeyP', 'Escape', 'PadStart')) this.pause();
         break;
       case 'paused':
-        if (inp.pressed('KeyP', 'Escape', 'PadStart')) this.resume();
+        if (inp.pressed('KeyP', 'PadStart') || back) this.resume();
+        else if (ok) menu.ok();
         break;
       case 'finished':
-        if (this.resultsT < -1 && inp.pressed('Enter', 'PadA', 'PadStart')) this.startRace();
-        else if (this.resultsT > 0.4 && ok()) this.resultsT = 0.01;
+        if (menu) {
+          // sin Espacio: es la tecla del objeto y alguien podría seguir pulsándola al llegar
+          if (inp.pressed('Enter', 'NumpadEnter', 'PadA', 'PadStart')) menu.ok();
+        } else if (this.resultsT > 0.4 && inp.pressed('Enter', 'NumpadEnter', 'PadA', 'PadStart')) this.resultsT = 0.01;
         break;
     }
     if (inp.pressed('KeyM')) this.toggleMute();
