@@ -202,7 +202,7 @@ export function buildWorld(scene, track) {
   const kind = TH.trees;
   const m4 = new THREE.Matrix4();
   const q = new THREE.Quaternion();
-  const want = { mixed: 650, snowpine: 650, dead: 260, jungle: 900, park: 140, palm: 320, cycad: 400 }[kind] || 400;
+  const want = { mixed: 650, snowpine: 650, dead: 260, jungle: 900, park: 140, palm: 160, cycad: 400 }[kind] || 400;
   const spots = [];
   let tries = 0;
   while (spots.length < want && tries < 25000) {

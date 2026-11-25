@@ -62,9 +62,9 @@ const smooth = (a, b, x) => {
 };
 
 // Olas: periodo (s), largo de cada lengua (m), retraso entre lenguas (fracción del periodo),
-// lo que entra en la pista desde la barrera (m: con 14 llega hasta d = ∓1 y deja seco el otro
+// lo que entra en la pista desde la barrera (m: con 15 llega hasta el centro y deja seco el otro
 // lado) y dónde espera el agua cuando se retira (m fuera de la barrera)
-export const WAVE = { period: 6.5, lobe: 26, lag: 0.07, reach: 14, out: 26 };
+export const WAVE = { period: 6.5, lobe: 26, lag: 0.07, reach: 15, out: 26 };
 // fase de la ola: fuera (0) hasta 0,3; entra hasta 0,48; se queda hasta 0,75; se retira hasta 0,95
 export function waveEnv(u) {
   if (u < 0.3) return 0;

@@ -610,7 +610,7 @@ export class Obstacles {
     const len = R.s1 - R.s0;
     const clear = (s) => R.active.every((m) => Math.abs(this.rel(m.s, s)) > RAIN_GAP);
     let s = null, d = 0;
-    if (Math.random() < RAIN_AIMED) {
+    if (Math.random() < (R.ship ? 0.85 : RAIN_AIMED)) { // (el barco apunta más)
       const cands = vehicles.filter((v) => v.state === 'ok' && tr.ahead(R.s0 - 30, v.s) < len + 30 && !(R.aimed.get(v) > this.time));
       if (cands.length) {
         const v = cands[Math.floor(Math.random() * cands.length)];
@@ -877,7 +877,7 @@ export class Obstacles {
     const seg = 10;
     const geo = new THREE.BufferGeometry();
     const pos = [], col = [], idx = [];
-    const deep = new THREE.Color(0x22b8cc), light = new THREE.Color(0x8ee6ee), foam = new THREE.Color(0xffffff);
+    const deep = new THREE.Color(0x0f9fc0), light = new THREE.Color(0x3cc8e0), foam = new THREE.Color(0xffffff);
     const rows = [[0, deep], [0.8, light], [1, foam]];
     for (let i = 0; i <= seg; i++) {
       const zz = -WAVE.lobe / 2 + (i / seg) * WAVE.lobe;
@@ -892,7 +892,7 @@ export class Obstacles {
     geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
     geo.setIndex(idx);
     geo.computeVertexNormals();
-    const mat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.88, side: THREE.DoubleSide, depthWrite: false });
+    const mat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.93, side: THREE.DoubleSide, depthWrite: false });
     for (const w of tr.waves) {
       const lobes = [];
       for (let s = w.s0; s < w.s1 - 1; s += WAVE.lobe) {

@@ -5,7 +5,7 @@ import { DRIFT } from './vehicle.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
 // huecos entre las patas del saurópodo (patas en d = -6,5 y +5,5; ver obstacles.js)
-const LEG_GAPS = [-0.5, 9.6];
+const LEG_GAPS = [-0.5, 9.9];
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
 // Derrape de la IA. Según la habilidad (fácil 0,7, normal 1, difícil 1,5): en qué parte de las
@@ -282,15 +282,15 @@ export class AIDriver {
     if (!tr.waves.length && !tr.legs.length) return null;
     for (const w of tr.waves) {
       if (tr.ahead(w.s0 - 25, s) < w.s1 - w.s0 + 25) {
-        if (this.waveTry == null) this.waveTry = Math.random() < 0.25 + 0.3 * this.skill;
+        if (this.waveTry == null) this.waveTry = Math.random() < 0.15 + 0.2 * this.skill;
         if (!this.waveTry) return null;
         return w.side < 0 ? Math.max(3.5, Math.min(8, this.laneTarget)) : Math.min(-3.5, Math.max(-8, this.laneTarget));
       }
     }
     this.waveTry = null;
     for (const L of tr.legs) {
-      if (tr.ahead(s, L.s) < 30 || tr.ahead(L.s, s) < 6) {
-        if (this.legTry == null) this.legTry = Math.random() < 0.45 + 0.3 * this.skill;
+      if (tr.ahead(s, L.s) < 70 || tr.ahead(L.s, s) < 6) {
+        if (this.legTry == null) this.legTry = Math.random() < 0.5 + 0.2 * this.skill;
         if (!this.legTry) return null;
         let best = LEG_GAPS[0];
         for (const g of LEG_GAPS) if (Math.abs(g - this.lane) < Math.abs(best - this.lane)) best = g;
