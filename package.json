@@ -9,7 +9,7 @@
     "dev": "esbuild src/main.js --bundle --format=iife --target=es2020 --sourcemap --outfile=dist/game.js --watch",
     "test": "node tools/smoke.mjs",
     "musica": "node --no-warnings tools/music.mjs todos",
-    "test:pista": "node tools/roadcheck.mjs 90 clasico 2 && node tools/roadcheck.mjs 90 nieve 2 && node tools/roadcheck.mjs 90 clasico 1",
+    "test:pista": "node tools/roadcheck.mjs 90 clasico 2 && node tools/roadcheck.mjs 90 nieve 2 && node tools/roadcheck.mjs 90 clasico 1 && node tools/roadcheck.mjs 90 ciudad 1 && node tools/roadcheck.mjs 90 volcan 1",
     "test:memoria": "node tools/memcheck.mjs 3"
   },
   "dependencies": {

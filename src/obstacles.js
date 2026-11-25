@@ -1168,7 +1168,7 @@ function streetTex(halfLen, w, zebra) {
   g.strokeRect(x0 + 4, Z(-w / 2) + 4, x1 - x0 - 8, w * pz - 8);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 4;
+  t.anisotropy = Math.min(4, T.anisotropy());
   return t;
 }
 

@@ -1,6 +1,6 @@
 // Escenario: cielo, luces, terreno, montañas, árboles, gradas y decoración.
 import * as THREE from 'three';
-import { splitBigMeshes } from './optimize.js';
+import { splitBigMeshes, splitInstancedByArea, mergeStatic } from './optimize.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { LIMIT } from './track.js';
 import { placeOnTrack } from './trackMesh.js';
@@ -212,7 +212,7 @@ export function buildWorld(scene, track) {
       im.setMatrixAt(i, m4);
     });
     im.castShadow = true; im.receiveShadow = true;
-    scene.add(im);
+    for (const part of splitInstancedByArea(im)) scene.add(part);
   };
   const trunkGeo = new THREE.CylinderGeometry(0.4, 0.6, 3, 6); trunkGeo.translate(0, 1.5, 0);
   const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5a3b22, roughness: 1 });
@@ -285,7 +285,7 @@ export function buildWorld(scene, track) {
       im.setColorAt(i, c.setHex(cols[k % cols.length]));
     });
     im.castShadow = true; im.receiveShadow = true;
-    scene.add(im);
+    for (const part of splitInstancedByArea(im)) scene.add(part);
   }
 
   // rocas
@@ -306,30 +306,37 @@ export function buildWorld(scene, track) {
     rocks.setMatrixAt(i, m4);
   }
   rocks.castShadow = true;
-  scene.add(rocks);
+  for (const part of splitInstancedByArea(rocks)) scene.add(part);
 
   // gradas junto a la recta de meta (lado izquierdo, fuera del circuito)
+  // Las filas de público van todas en una sola malla (una orden de dibujo en vez de 18): cada
+  // fila lleva en sus coordenadas de textura su trozo de público y se mueve arriba y abajo
+  // cambiando sus vértices.
   const crowdMat = new THREE.MeshStandardMaterial({ map: T.crowdTex(), roughness: 0.9 });
   const standMat = new THREE.MeshStandardMaterial({ color: 0x9aa3ad, roughness: 0.8 });
   const roofMat = new THREE.MeshStandardMaterial({ color: 0xc0392b, roughness: 0.6, side: THREE.DoubleSide });
-  const crowds = [];
+  const crowdGeos = [];
   for (const [s0, len] of [[-95, 70], [-15, 70], [65, 60]]) {
     const g = new THREE.Group();
     placeOnTrack(g, track, s0 + len / 2, -(LIMIT + 9), 0);
+    g.updateMatrixWorld(true);
     for (let k = 0; k < 6; k++) {
       const step = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.2 + k * 1.2, len), standMat);
       step.position.set(k * 2.2, (1.2 + k * 1.2) / 2, 0);
       step.castShadow = true; step.receiveShadow = true;
       g.add(step);
-      const tex = crowdMat.map.clone();
-      tex.needsUpdate = true;
-      tex.repeat.set(len / 12, 0.5);
-      tex.offset.set(r(), k % 2 ? 0 : 0.5);
-      const people = new THREE.Mesh(new THREE.PlaneGeometry(len, 1.3), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9 }));
+      const rep = [len / 12, 0.5], off = [r(), k % 2 ? 0 : 0.5];
+      const pg = new THREE.PlaneGeometry(len, 1.3);
+      const uv = pg.attributes.uv;
+      for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * rep[0] + off[0], uv.getY(i) * rep[1] + off[1]);
+      const people = new THREE.Object3D();
       people.rotation.y = -Math.PI / 2;
       people.position.set(k * 2.2 - 1.12, 1.2 + k * 1.2 + 0.55, 0);
       g.add(people);
-      crowds.push(people);
+      people.updateMatrixWorld(true);
+      pg.applyMatrix4(people.matrixWorld);
+      g.remove(people);
+      crowdGeos.push(pg);
     }
     const roof = new THREE.Mesh(new THREE.BoxGeometry(15, 0.4, len + 2), roofMat);
     roof.position.set(6, 12, 0);
@@ -341,13 +348,22 @@ export function buildWorld(scene, track) {
       p.position.set(13, 6, z);
       g.add(p);
     }
+    mergeStatic(g);
     scene.add(g);
   }
+  const crowd = new THREE.Mesh(mergeGeometries(crowdGeos), crowdMat);
+  crowd.geometry.computeBoundingSphere(); // (el vaivén es de centímetros: no hace falta recalcularla)
+  scene.add(crowd);
+  const crowdPos = crowd.geometry.attributes.position;
+  crowdPos.setUsage(THREE.DynamicDrawUsage);
+  const crowdY0 = Float32Array.from({ length: crowdPos.count }, (_, i) => crowdPos.getY(i));
+  const crowdDy = new Float32Array(crowdGeos.length);
 
-  // banderas a lo largo de la pista
-  const flagGeos = [], poleGeos = [];
+  // banderas a lo largo de la pista: todas en una malla (una orden de dibujo en vez de una
+  // por bandera); cada una ondea girando sus tres vértices alrededor de su mástil
+  const poleGeos = [];
   const flagCols = [0xe63946, 0xffd60a, 0x2a9df4, 0x2ec4b6, 0xf15bb5, 0xff9f1c];
-  const flagMeshes = [];
+  const flags = []; // [x, y, z, ángulo, fase]
   for (let s = 20; s < track.length; s += 45) {
     if (track.inTunnel(s) || track.inTunnel(s + 20) || track.inTunnel(s - 20)) continue;
     if (track.crossings.some((c) => Math.abs(s - c.s) < 12)) continue; // ni en la calle que cruza
@@ -357,16 +373,34 @@ export function buildWorld(scene, track) {
       const pole = new THREE.CylinderGeometry(0.08, 0.08, 6, 5);
       pole.translate(P.x, base + 3, P.z);
       poleGeos.push(pole);
-      const fg = new THREE.BufferGeometry();
-      fg.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 0, -1.6, 0, 2.4, -0.8, 0], 3));
-      fg.computeVertexNormals();
-      const flag = new THREE.Mesh(fg, new THREE.MeshStandardMaterial({ color: flagCols[Math.floor(r() * flagCols.length)], side: THREE.DoubleSide }));
-      flag.position.set(P.x, base + 6, P.z);
-      flag.rotation.y = r() * 6;
-      flag.userData.phase = r() * 6;
-      scene.add(flag);
-      flagMeshes.push(flag);
+      const color = flagCols[Math.floor(r() * flagCols.length)];
+      flags.push({ x: P.x, y: base + 6, z: P.z, a: r() * 6, phase: r() * 6, color: new THREE.Color(color) });
     }
+  }
+  const flagGeo = new THREE.BufferGeometry();
+  const fPos = new Float32Array(flags.length * 9), fNor = new Float32Array(flags.length * 9), fCol = new Float32Array(flags.length * 9);
+  flags.forEach((f, i) => { for (let v = 0; v < 3; v++) fCol.set([f.color.r, f.color.g, f.color.b], i * 9 + v * 3); });
+  flagGeo.setAttribute('position', new THREE.BufferAttribute(fPos, 3).setUsage(THREE.DynamicDrawUsage));
+  flagGeo.setAttribute('normal', new THREE.BufferAttribute(fNor, 3).setUsage(THREE.DynamicDrawUsage));
+  flagGeo.setAttribute('color', new THREE.BufferAttribute(fCol, 3));
+  const FLAG = [[0, 0], [0, -1.6], [2.4, -0.8]]; // vértices de la bandera (x, y) junto al mástil
+  const placeFlags = () => {
+    flags.forEach((f, i) => {
+      const c = Math.cos(f.a), sn = Math.sin(f.a);
+      for (let v = 0; v < 3; v++) {
+        const o = i * 9 + v * 3, [x, y] = FLAG[v];
+        fPos[o] = f.x + x * c; fPos[o + 1] = f.y + y; fPos[o + 2] = f.z - x * sn;
+        fNor[o] = sn; fNor[o + 1] = 0; fNor[o + 2] = c;
+      }
+    });
+    flagGeo.attributes.position.needsUpdate = true;
+    flagGeo.attributes.normal.needsUpdate = true;
+  };
+  placeFlags();
+  if (flags.length) {
+    const flagMesh = new THREE.Mesh(flagGeo, new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+    flagMesh.frustumCulled = false; // repartidas por todo el circuito
+    scene.add(flagMesh);
   }
   scene.add(new THREE.Mesh(mergeGeometries(poleGeos), new THREE.MeshStandardMaterial({ color: 0xdddddd, metalness: 0.5 })));
 
@@ -445,10 +479,11 @@ export function buildWorld(scene, track) {
     },
     update(dt) {
       time += dt;
-      for (const f of flagMeshes) f.rotation.y += Math.sin(time * 3 + f.userData.phase) * 0.01;
-      for (let i = 0; i < crowds.length; i++) {
-        crowds[i].position.y += Math.sin(time * 9 + i * 1.7) * 0.006;
-      }
+      for (const f of flags) f.a += Math.sin(time * 3 + f.phase) * 0.01;
+      placeFlags();
+      for (let i = 0; i < crowdDy.length; i++) crowdDy[i] += Math.sin(time * 9 + i * 1.7) * 0.006;
+      for (let v = 0; v < crowdPos.count; v++) crowdPos.setY(v, crowdY0[v] + crowdDy[v >> 2]);
+      crowdPos.needsUpdate = true;
       const a = time * 0.03;
       blimp.position.set(cx + Math.cos(a) * 380, 120, cz + Math.sin(a) * 300);
       blimp.rotation.y = -a - Math.PI / 2 + Math.PI;

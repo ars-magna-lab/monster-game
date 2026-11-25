@@ -7,11 +7,12 @@ attribute float psize;
 attribute float palpha;
 attribute vec3 pcolor;
 uniform float scale;
+uniform float maxPx;
 varying float vA;
 varying vec3 vC;
 void main() {
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
-  gl_PointSize = psize * scale / max(0.1, -mv.z);
+  gl_PointSize = min(maxPx, psize * scale / max(0.1, -mv.z));
   gl_Position = projectionMatrix * mv;
   vA = palpha;
   vC = pcolor;
@@ -44,13 +45,14 @@ export class Particles {
     this.alpha0 = new Float32Array(max);
     this.grav = new Float32Array(max);
     this.drag = new Float32Array(max);
+    this.under = new Uint8Array(max); // nació bajo el suelo (en un foso excavado): ahí sí se ve
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage));
     g.setAttribute('pcolor', new THREE.BufferAttribute(this.col, 3).setUsage(THREE.DynamicDrawUsage));
     g.setAttribute('psize', new THREE.BufferAttribute(this.size, 1).setUsage(THREE.DynamicDrawUsage));
     g.setAttribute('palpha', new THREE.BufferAttribute(this.alpha, 1).setUsage(THREE.DynamicDrawUsage));
     this.mat = new THREE.ShaderMaterial({
-      uniforms: { map: { value: softDotTex() }, scale: { value: 500 } },
+      uniforms: { map: { value: softDotTex() }, scale: { value: 500 }, maxPx: { value: 4096 } },
       vertexShader: VERT,
       fragmentShader: FRAG,
       transparent: true,
@@ -65,8 +67,10 @@ export class Particles {
     this.alive = 0;
   }
 
-  setScale(viewH, fovDeg) {
+  // maxPx: tamaño máximo de una partícula en píxeles (en calidad baja, una fracción de la vista)
+  setScale(viewH, fovDeg, maxFrac = 0) {
     this.mat.uniforms.scale.value = viewH / (2 * Math.tan((fovDeg * Math.PI) / 360));
+    this.mat.uniforms.maxPx.value = maxFrac ? viewH * maxFrac : 4096;
   }
 
   emit(o) {
@@ -84,6 +88,7 @@ export class Particles {
     this.alpha0[i] = o.alpha ?? 1;
     this.grav[i] = o.gravity || 0;
     this.drag[i] = o.drag ?? 1;
+    this.under[i] = o.y < -0.1 ? 1 : 0;
     this.size[i] = this.size0[i];
     this.alpha[i] = this.alpha0[i];
   }
@@ -93,7 +98,7 @@ export class Particles {
     // (la última subida ya las dejó todas transparentes)
     if (this.alive === 0) { this.points.visible = false; return; }
     this.points.visible = true;
-    const { pos, vel, life, maxLife, size, size0, grow, alpha, alpha0, grav, drag } = this;
+    const { pos, vel, life, maxLife, size, size0, grow, alpha, alpha0, grav, drag, under } = this;
     let alive = 0;
     for (let i = 0; i < this.max; i++) {
       if (life[i] <= 0) { if (alpha[i] !== 0) { alpha[i] = 0; size[i] = 0; } continue; }
@@ -107,8 +112,9 @@ export class Particles {
       const t = Math.max(0, life[i] / maxLife[i]);
       size[i] = size0[i] + grow[i] * (1 - t);
       alpha[i] = alpha0[i] * Math.min(1, t * 2.5);
-      // bajo el suelo no se ven (el suelo ya no escribe profundidad y no las tapa)
-      if (pos[i3 + 1] < -0.1) alpha[i] = 0;
+      // bajo el suelo no se ven (el suelo ya no escribe profundidad y no las tapa), salvo las
+      // que nacen dentro de un foso excavado (salpicaduras, explosiones de lava)
+      if (pos[i3 + 1] < -0.1 && !under[i]) alpha[i] = 0;
     }
     this.alive = alive;
     for (const n of ['position', 'pcolor', 'psize', 'palpha']) this.geo.attributes[n].needsUpdate = true;
@@ -120,9 +126,13 @@ export class FX {
   constructor(scene) {
     this.soft = new Particles(scene, 2200, false);
     this.glow = new Particles(scene, 1200, true);
+    this.cheap = false;
+    this.maxFrac = 0.2;
   }
 
-  setScale(h, fov) { this.soft.setScale(h, fov); this.glow.setScale(h, fov); }
+  // cheap: calidad baja; las partículas muy cerca de la cámara (el polvo del propio camión,
+  // el humo, las explosiones) no pasan de un 20 % del alto de la vista: menos píxeles que pintar
+  setScale(h, fov) { const k = this.cheap ? this.maxFrac : 0; this.soft.setScale(h, fov, k); this.glow.setScale(h, fov, k); }
 
   update(dt) { this.soft.update(dt); this.glow.update(dt); }
 

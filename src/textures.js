@@ -3,6 +3,7 @@ import * as THREE from 'three';
 
 let maxAniso = 4;
 export function setAnisotropy(n) { maxAniso = n; }
+export const anisotropy = () => maxAniso;
 
 function rng(seed) {
   let s = seed >>> 0;

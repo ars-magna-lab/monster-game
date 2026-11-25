@@ -17,7 +17,7 @@ import { HUD, fmtTime } from './hud.js';
 import { setAnisotropy, checkerTex, softDotTex, setTexTheme } from './textures.js';
 import { CIRCUITS, circuitById, pitText } from './circuits.js';
 import { renderSong } from './music.js';
-import { setCheapMaterials, disposeScene } from './optimize.js';
+import { setCheapMaterials, disposeScene, cheapTextureFilter } from './optimize.js';
 import { newCup, addRace, standings, buildPodium } from './copa.js';
 
 const STEP = 1 / 120;
@@ -137,7 +137,9 @@ class Game {
     const params = new URLSearchParams(location.search);
     this.autopilot = params.has('auto');
     this.renderer = makeRenderer($('game'));
-    setAnisotropy(Math.min(8, this.renderer.capabilities.getMaxAnisotropy()));
+    // dibujando con el procesador el filtro anisotrópico es carísimo (el camino y el suelo
+    // llenan media pantalla): sin él cada fotograma cuesta ~20 % menos
+    setAnisotropy(SOFTWARE ? 1 : Math.min(8, this.renderer.capabilities.getMaxAnisotropy()));
 
     this.envMap = new THREE.PMREMGenerator(this.renderer).fromScene(new RoomEnvironment(), 0.04).texture;
     this.camera = new THREE.PerspectiveCamera(68, 1, 0.5, 4000); // cámara de la portada
@@ -215,7 +217,8 @@ class Game {
     // luces del túnel: faros del jugador y luz que "pasa" bajo las lámparas
     this.headlight = new THREE.SpotLight(0xfff4d0, 0, 90, 0.55, 0.5, 1.2);
     scene.add(this.headlight, this.headlight.target);
-    this.tunnelLight = new THREE.PointLight(c.theme.volcano ? 0xff7a30 : 0xffe2a0, 0, 45, 1.4);
+    this.tunnelColor = new THREE.Color(c.theme.volcano ? 0xff7a30 : 0xffe2a0);
+    this.tunnelLight = new THREE.PointLight(this.tunnelColor, 0, 45, 1.4);
     scene.add(this.tunnelLight);
     this.flash = new THREE.PointLight(0xffa040, 0, 60, 1.5);
     scene.add(this.flash);
@@ -235,8 +238,10 @@ class Game {
       this.world.setShadowSize(this.perf.shadows === 2 ? 2048 : 1024);
       setCheapMaterials(scene, !!q.cheap);
     }
+    this.lowQualityExtras();
     // los camiones vuelven a la parrilla del circuito nuevo
     this.vehicles.forEach((v, i) => v.placeAt(this.track.wrap(-12 - i * 8), (i % 2 ? 5 : -5), 0));
+    if (SOFTWARE) cheapTextureFilter(scene);
     this.views = this.views || [];
   }
 
@@ -683,6 +688,7 @@ class Game {
     this.allDoneT = null;
     for (const l of this.trackMeshes.lights) l.material.color.setHex(0x331111);
     this.buildViews();
+    this.lightsWarm = !this.leanLights; // se preparan en el primer dibujo de la carrera
   }
 
   buildViews() {
@@ -1209,12 +1215,71 @@ class Game {
     if (reset) this.perf.scale = Math.min(dpr, q.scale);
     this.perf.scale = Math.max(q.minScale, Math.min(Math.min(dpr, q.scale), this.perf.scale));
     for (const r of [this.renderer, this.renderer2]) if (r) r.setPixelRatio(this.perf.scale);
+    this.lowQualityExtras();
     if (reset) {
       this.setShadows(q.shadows);
       setCheapMaterials(this.scene, !!q.cheap);
       if (this.show) setCheapMaterials(this.show.scene, !!q.cheap);
     }
     if (this.show) this.resize();
+  }
+
+  // Calidad baja (dibujo por procesador): cada luz encendida en la escena se calcula en cada
+  // píxel aunque su intensidad sea 0 (con todas, el fotograma cuesta un 20–30 % más). Se
+  // encienden solo cuando hacen falta, y nunca más de estas combinaciones (cada una necesita
+  // sus propios sombreadores): ninguna; los faros y la luz del túnel dentro del túnel (y la luz
+  // del túnel hace también de destello de las explosiones); o, fuera del túnel, una sola luz
+  // puntual más, que es el destello de una explosión o, si no hay, el resplandor del foso de
+  // lava más cercano. Los sombreadores de esas combinaciones se
+  // preparan al empezar la carrera, para que no haya tirones al encenderlas la primera vez.
+  // Además, en calidad baja las partículas tienen un tamaño máximo en pantalla (FX.setScale).
+  lowQualityExtras() {
+    const lean = !!this.qualityLevel().cheap;
+    this.leanLights = lean;
+    this.fx.cheap = lean;
+    for (const l of [this.headlight, this.tunnelLight, this.flash, ...this.trackMeshes.glows]) l.visible = !lean;
+  }
+
+  // Dibuja la vista una vez con cada combinación de luces en un solo píxel: así se compilan
+  // sus sombreadores (con renderer.compile no basta: el dibujo por procesador prepara cada
+  // combinación la primera vez que dibuja con ella)
+  warmLights(view) {
+    const r = this.renderer;
+    const combos = [[this.headlight, this.tunnelLight], [this.flash]];
+    for (const l of [this.headlight, this.tunnelLight, this.flash, ...this.trackMeshes.glows]) l.visible = false;
+    r.setScissorTest(true);
+    r.setViewport(0, 0, 1, 1);
+    r.setScissor(0, 0, 1, 1);
+    for (const ls of combos) {
+      for (const l of ls) l.visible = true;
+      r.render(this.scene, view.camera);
+      for (const l of ls) l.visible = false;
+    }
+  }
+
+  leanLightsFor(view, inTunnel) {
+    this.headlight.visible = this.tunnelLight.visible = inTunnel;
+    const boom = this.flash.intensity >= 1;
+    this.flash.visible = boom && !inTunnel;
+    // dentro del túnel, el destello lo hace la propia luz del túnel (otra luz más sería otra
+    // combinación de sombreadores, y prepararla también daba tirones)
+    const tl = this.tunnelLight;
+    if (inTunnel && boom && this.flash.intensity > tl.intensity) {
+      tl.position.copy(this.flash.position);
+      tl.intensity = this.flash.intensity;
+      tl.color.copy(this.flash.color); tl.distance = this.flash.distance; tl.decay = this.flash.decay;
+    } else {
+      tl.color.copy(this.tunnelColor); tl.distance = 45; tl.decay = 1.4;
+    }
+    let near = null, best = 150 * 150;
+    if (!inTunnel && !boom) {
+      const c = view.camera.position;
+      for (const l of this.trackMeshes.glows) {
+        const d = (l.position.x - c.x) ** 2 + (l.position.z - c.z) ** 2;
+        if (d < best) { best = d; near = l; }
+      }
+    }
+    for (const l of this.trackMeshes.glows) l.visible = l === near;
   }
 
   // 0 = sin sombras, 1 = sombras sencillas, 2 = sombras suaves
@@ -1539,6 +1604,7 @@ class Game {
     const lampPhase = Math.cos(((p.s - tr.tunnel.s0 - 6) / 12) * Math.PI * 2);
     this.tunnelLight.intensity = k * (150 + 90 * lampPhase);
     this.tunnelLight.position.set(p.x + fx * 6, tr.baseAt(p.s) + 15, p.z + fz * 6);
+    if (this.leanLights) this.leanLightsFor(view, k > 0.002);
     w.focus(p.mesh.position);
   }
 
@@ -1550,6 +1616,7 @@ class Game {
     this.scene.environmentIntensity = this.envBase;
     this.headlight.intensity = 0;
     this.tunnelLight.intensity = 0;
+    if (this.leanLights) for (const l of [this.headlight, this.tunnelLight, this.flash]) l.visible = false;
   }
 
   updateTitleCamera() {
@@ -1692,6 +1759,7 @@ class Game {
     }
     const W = window.innerWidth, H = window.innerHeight;
     const main = this.views.filter((v) => !v.external);
+    if (!this.lightsWarm && this.leanLights) { this.lightsWarm = true; this.prepareLights(this.views[0], dt); this.warmLights(this.views[0]); }
     r.setScissorTest(main.length > 1);
     for (const v of main) {
       const x = v.rect.x * W, y = (1 - v.rect.y - v.rect.h) * H, w = v.rect.w * W, h = v.rect.h * H;
