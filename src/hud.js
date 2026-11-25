@@ -109,9 +109,32 @@ export class HUD {
     g.strokeStyle = '#d9b98c'; g.lineWidth = 7; g.stroke();
     path(tr.tunnel.s0, tr.tunnel.s1);
     g.strokeStyle = '#555'; g.lineWidth = 7; g.stroke();
+    // lago helado
+    for (const k of tr.lakes) {
+      path(k.s0, k.s1, 2);
+      g.strokeStyle = '#c4ecff'; g.lineWidth = 9; g.stroke();
+    }
+    // fosos: lava naranja, agua helada azul claro, agua verde azulado, secos negros
+    const PIT_COL = { lava: '#ff6a1a', ice: '#6cc8ff', water: '#2bb3a0' };
     for (const p of tr.pits) {
       path(p.s0, p.s1, 1);
-      g.strokeStyle = p.water ? '#2bb3a0' : '#222'; g.lineWidth = 9; g.stroke();
+      g.strokeStyle = PIT_COL[p.liquid] || (p.water ? '#2bb3a0' : '#222'); g.lineWidth = 9; g.stroke();
+    }
+    // lluvia de rocas: trazo discontinuo rojo encima del camino
+    for (const m of tr.meteors) {
+      path(m.s0, m.s1, 2);
+      g.setLineDash([4, 3]);
+      g.strokeStyle = '#e8200c'; g.lineWidth = 4; g.stroke();
+      g.setLineDash([]);
+    }
+    // cruces con tráfico: raya amarilla de lado a lado
+    for (const c of tr.crossings) {
+      const P = tr.pointAt(c.s);
+      const [cx, cy] = this.toMap(P.x, P.z);
+      g.save(); g.translate(cx, cy); g.rotate(P.th + Math.PI / 2);
+      g.fillStyle = 'rgba(0,0,0,0.7)'; g.fillRect(-9, -3, 18, 6);
+      g.fillStyle = '#ffd400'; g.fillRect(-8, -2, 16, 4);
+      g.restore();
     }
     const st = tr.pointAt(0);
     const [sx, sy] = this.toMap(st.x, st.z);

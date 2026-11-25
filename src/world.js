@@ -108,6 +108,13 @@ export function buildWorld(scene, track) {
   const tunPts = [];
   for (let s = track.tunnel.s0 - 10; s <= track.tunnel.s1 + 10; s += 8) { const P = track.pointAt(s); tunPts.push([P.x, P.z]); }
   const nearTunnel = (x, z) => tunPts.some(([px, pz]) => (x - px) ** 2 + (z - pz) ** 2 < 82 * 82);
+  // pasillo de las calles que cruzan la pista (ciudad): ni edificios ni árboles, que los coches
+  // no salgan de dentro de una casa. half = media anchura libre a cada lado del eje de la calle
+  const crossPts = track.crossings.map((c) => track.pointAt(c.s));
+  const inStreet = (x, z, half) => crossPts.some((P) => {
+    const dx = x - P.x, dz = z - P.z;
+    return Math.abs(dx * P.tx + dz * P.tz) < half && Math.abs(dx * P.rx + dz * P.rz) < 130;
+  });
 
   // montañas lejanas (en la ciudad, rascacielos en el horizonte)
   if (TH.mountains !== null) {
@@ -195,6 +202,7 @@ export function buildWorld(scene, track) {
     if (Math.abs(z) < 75 && x > -120 && x < 140) continue; // gradas
     spots.push([x, z, 0.7 + r() * 0.8, r()]);
   }
+  if (crossPts.length) spots.splice(0, spots.length, ...spots.filter(([x, z]) => !inStreet(x, z, 12)));
   const addInst = (geo, mat, list, yScale = 1) => {
     if (!list.length) return;
     const im = new THREE.InstancedMesh(geo, mat, list.length);
@@ -265,14 +273,16 @@ export function buildWorld(scene, track) {
     const geo = new THREE.BoxGeometry(1, 1, 1); geo.translate(0, 0.5, 0);
     const cols = [0xb8c4d0, 0xd8c8b0, 0x9fb0a8, 0xc8a898, 0xa8b8d8, 0xe0d8c8];
     const tex = buildingTex();
-    const im = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8 }), spotsB.length);
+    // medidas de todos (mismo orden de números al azar) y fuera los que tapan una calle transversal
+    const blds = spotsB.map(([x, z], i) => ({ x, z, i, w: 18 + r() * 22, d: 18 + r() * 22, h: 20 + r() * 70, a: r() * 0.3 }))
+      .filter((b) => !inStreet(b.x, b.z, 8 + 0.75 * Math.max(b.w, b.d)));
+    const im = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8 }), blds.length);
     const c = new THREE.Color();
-    spotsB.forEach(([x, z], i) => {
-      const w = 18 + r() * 22, d = 18 + r() * 22, h = 20 + r() * 70;
-      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), r() * 0.3);
+    blds.forEach(({ x, z, w, d, h, a, i: k }, i) => {
+      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), a);
       m4.compose(new THREE.Vector3(x, 0, z), q, new THREE.Vector3(w, h, d));
       im.setMatrixAt(i, m4);
-      im.setColorAt(i, c.setHex(cols[i % cols.length]));
+      im.setColorAt(i, c.setHex(cols[k % cols.length]));
     });
     im.castShadow = true; im.receiveShadow = true;
     scene.add(im);
@@ -340,6 +350,7 @@ export function buildWorld(scene, track) {
   const flagMeshes = [];
   for (let s = 20; s < track.length; s += 45) {
     if (track.inTunnel(s) || track.inTunnel(s + 20) || track.inTunnel(s - 20)) continue;
+    if (track.crossings.some((c) => Math.abs(s - c.s) < 12)) continue; // ni en la calle que cruza
     for (const side of [-1, 1]) {
       const P = track.pointAt(s, side * (LIMIT + 2.2));
       const base = track.baseAt(s);

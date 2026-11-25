@@ -29,7 +29,7 @@ await p.evaluate(() => {
     g.settings.circuit = id; g.loadCircuit(id);
     if (diff) g.settings.diff = diff;
     g.settings.laps = laps; g.autopilot = true; g.startRace(); g.countdown = 0.01;
-    const KINDS = ['log', 'ball', 'boom', 'net', 'fallPit', 'fallWater', 'tired', 'barreled', 'rocketed', 'waved'];
+    const KINDS = ['log', 'ball', 'boom', 'net', 'fallPit', 'fallWater', 'tired', 'barreled', 'rocketed', 'waved', 'meteor', 'car'];
     const per = new Map(g.vehicles.map((v) => [v, { stuck: 0, wrong: 0, ...Object.fromEntries(KINDS.map((k) => [k, 0])) }]));
     const items = { launch: { tire: 0, barrel: 0, rocket: 0 }, hit: { tire: 0, barrel: 0, rocket: 0 }, selfBarrel: 0, rocketDodged: 0, rocketNoTarget: 0, rolls: [] };
     // eventos: se cuentan antes de que handleEvents vacíe la lista
@@ -86,7 +86,7 @@ if (!medir) {
     const r = await p.evaluate(runRace, { id, laps, diff: diffs[0] });
     const ai = r.trucks.filter((t) => t.ai);
     const sum = (k) => ai.reduce((a, t) => a + t.c[k], 0);
-    const out = { id, L: r.L, res: r.trucks.map((t) => (t.finished ? t.time : 'NO ' + t.s)), ia: Object.fromEntries(['log', 'ball', 'boom', 'net', 'fallPit', 'fallWater', 'stuck', 'wrong'].map((k) => [k, sum(k)])) };
+    const out = { id, L: r.L, res: r.trucks.map((t) => (t.finished ? t.time : 'NO ' + t.s)), ia: Object.fromEntries(['log', 'ball', 'boom', 'net', 'fallPit', 'fallWater', 'meteor', 'car', 'stuck', 'wrong'].map((k) => [k, sum(k)])) };
     await p.evaluate(() => { const g = window.__mm; g.startRace(); g.countdown = 0.01; g.simulate(9); });
     await new Promise((res) => setTimeout(res, 7000));
     await p.screenshot({ path: `shots/40-${id}.png` });
@@ -105,7 +105,7 @@ if (!medir) {
   }
   const f = (x) => x.toFixed(2);
   // tabla 1: lo que le pasa a la IA, por camión y vuelta
-  const COLS = ['log', 'ball', 'boom', 'net', 'fallPit', 'fallWater', 'stuck', 'wrong'];
+  const COLS = ['log', 'ball', 'boom', 'net', 'fallPit', 'fallWater', 'meteor', 'car', 'stuck', 'wrong'];
   console.log('\n## IA: sucesos por camión y vuelta (vuelta media en s)');
   console.log(['dif', 'circuito', 'n', ...COLS, 'vuelta', 'sin acabar'].join('\t'));
   for (const diff of diffs) {

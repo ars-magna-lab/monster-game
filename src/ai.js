@@ -1,5 +1,6 @@
 // Pilotos controlados por el ordenador.
 import { ROAD_HALF, LIMIT } from './track.js';
+import { RAIN_HIT_R } from './obstacles.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
 const wrapAng = (a) => {
@@ -22,6 +23,7 @@ export class AIDriver {
     this.noiseT = 0;
     this.rollerTry = null;
     this.rollerBest = null;
+    this.meteorBest = null;
     this.pitPick = null; // foso y carril elegidos para cruzarlo
     this.careful = false; // cruzando un puente estrecho: sin titubeos y sin correr tanto
   }
@@ -100,18 +102,30 @@ export class AIDriver {
     // puente estrecho delante o debajo: va derecho a su carril, sin titubeos y sin correr tanto
     const pk = this.pitPick;
     this.careful = !!pk?.narrow && (tr.ahead(v.s, pk.p.s0) < 70 || tr.ahead(pk.p.s0, v.s) < pk.p.s1 - pk.p.s0 + 2);
-    const la = this.careful ? 7 + speed * 0.3 : 9 + speed * 0.45;
-    const rl = this.rollerLane(game, speed);
-    const want = rl ?? this.laneAt(v.s + la);
-    this.lane += (want - this.lane) * Math.min(1, dt * (rl === null && !this.careful ? 1.2 : 3));
+    const la0 = this.careful ? 7 + speed * 0.3 : 9 + speed * 0.45;
+    // carril previsto (foso, barro...); se calcula siempre para que, al esquivar el tráfico,
+    // el carril elegido quede cerca del puente o la rampa que viene detrás
+    const planned = this.laneAt(v.s + la0);
+    const rl = this.rollerLane(game, speed, planned);
+    // esquivando una roca de fuego: el volantazo tiene que ser rápido (mira más cerca)
+    const ml = rl === null ? this.meteorLane(game, speed) : null;
+    const la = ml !== null && !this.careful ? 6 + speed * 0.25 : la0;
+    const want = rl ?? ml ?? planned;
+    // recién salido de un cruce (o de esquivar algo) con un foso cerca: vuelve rápido a su carril
+    if (rl !== null || ml !== null) this.dodgeT = 3;
+    else this.dodgeT = Math.max(0, (this.dodgeT || 0) - dt);
+    const back = this.dodgeT > 0 && this.pitPick && tr.ahead(v.s, this.pitPick.p.s0) < 90;
+    this.lane += (want - this.lane) * Math.min(1, dt * (ml !== null ? 6 : rl === null && !this.careful && !back ? 1.2 : 3));
     const P = tr.pointAt(v.s + la, this.lane);
     this.noiseT -= dt;
     if (this.noiseT <= 0) { this.noiseT = rand(0.3, 1.2); this.noise = rand(-0.12, 0.12) / this.skill; }
     const target = Math.atan2(P.z - v.z, P.x - v.x);
     const err = wrapAng(target - v.th);
-    let steer = Math.max(-1, Math.min(1, err * 2.6 + (this.careful ? 0 : this.noise)));
+    let steer = Math.max(-1, Math.min(1, err * (ml !== null ? 5 : 2.6) + (this.careful ? 0 : this.noise)));
     let throttle = 1, brake = 0;
     if (this.careful && speed > 27) { throttle = 0; brake = speed > 31 ? 0.5 : 0; }
+    // cruce sin hueco libre ahora mismo: los pilotos hábiles levantan el pie y esperan el hueco
+    if (rl !== null && this.rollerCost >= 9 && this.rollerTraffic && this.skill >= 1.5 && speed > 14) { throttle = 0; brake = 0.4; }
     if (Math.abs(err) > 1.7) {
       // mirando al revés: marcha atrás girando
       throttle = 0; brake = 1; steer = -Math.sign(err);
@@ -154,11 +168,12 @@ export class AIDriver {
     return { steer, throttle, brake, item: useItem };
   }
 
-  // Zona de rodillos (troncos, bolas...): carril por el que cruzarla sin que le pillen, o null.
-  // Se decide una vez por pasada si se intenta (más a menudo cuanto más hábil es el piloto).
-  rollerLane(game, speed) {
+  // Zona de rodillos (troncos, bolas...) o de tráfico: carril por el que cruzarla sin que le
+  // pillen, o null. Se decide una vez por pasada si se intenta (más a menudo cuanto más hábil
+  // es el piloto).
+  rollerLane(game, speed, planned = null) {
     const v = this.v, tr = this.track, ob = game.obstacles;
-    const zone = ob.logs.map((o) => {
+    const zone = ob.dodge.map((o) => {
       let ds = tr.ahead(v.s, o.s);
       if (ds > tr.length / 2) ds -= tr.length; // ya pasado: negativo
       return { o, ds, reach: o.len / 2 + 2.6 };
@@ -168,9 +183,11 @@ export class AIDriver {
     if (this.rollerTry == null) this.rollerTry = Math.random() < 0.5 * this.skill * (zone[0].o.ball ? 1.5 : 1);
     if (!this.rollerTry) return null;
     const sp = Math.max(speed, 10);
+    // con un foso de puente o rampa a un lado justo detrás, mejor un hueco cerca de su carril
+    const pitNear = planned !== null && this.pitPick && tr.ahead(v.s, this.pitPick.p.s0) < 150;
     let best = null, bestCost = Infinity;
     for (let d = -10; d <= 10; d++) {
-      let cost = Math.abs(d - v.d) * 0.05 - (d === this.rollerBest ? 0.3 : 0);
+      let cost = Math.abs(d - v.d) * 0.05 - (d === this.rollerBest ? 0.3 : 0) + (pitNear ? Math.abs(d - planned) * 0.2 : 0);
       for (const { o, ds, reach } of zone) {
         const t0 = Math.max(0, (ds - reach) / sp - 0.2), t1 = (ds + reach) / sp + 0.2;
         for (let t = t0; t <= t1; t += 0.05) {
@@ -182,6 +199,44 @@ export class AIDriver {
       if (cost < bestCost) { bestCost = cost; best = d; }
     }
     this.rollerBest = best;
+    this.rollerCost = bestCost;
+    this.rollerTraffic = zone.some((z) => z.o.loop);
+    return best;
+  }
+
+  // Lluvia de rocas: si una diana le pilla de camino (la roca cae justo cuando pasa por ahí),
+  // carril para apartarse, o null. Cada roca se decide una vez si se intenta esquivar.
+  meteorLane(game, speed) {
+    const R = game.obstacles.rain;
+    if (!R || !R.active.length) return null;
+    const v = this.v, tr = this.track;
+    const sp = Math.max(speed, 8);
+    const reach = RAIN_HIT_R + 2.2 * v.size;
+    const threats = [];
+    for (const m of R.active) {
+      const left = m.T - m.t;
+      let ds = tr.ahead(v.s, m.s);
+      if (ds > tr.length / 2) ds -= tr.length;
+      // dónde estará el camión cuando caiga la roca, respecto a la diana
+      const at = ds - sp * left;
+      if (Math.abs(at) > reach + 3) continue;
+      m.ai = m.ai || new Map();
+      if (!m.ai.has(this)) m.ai.set(this, Math.random() < 0.05 + 0.4 * this.skill);
+      if (m.ai.get(this)) threats.push({ m, left });
+    }
+    if (!threats.length) return null;
+    let best = null, bestCost = Infinity;
+    for (let d = -11; d <= 11; d++) {
+      let cost = Math.abs(d - v.d) * 0.05 - (d === this.meteorBest ? 0.5 : 0);
+      for (const { m, left } of threats) {
+        const dv = v.d + Math.max(-7 * left, Math.min(7 * left, d - v.d));
+        // si no hay carril del todo libre, el que más se aleje de la diana
+        const gap = Math.abs(dv - m.d);
+        if (gap < reach) cost += 10 + 2 * (reach - gap);
+      }
+      if (cost < bestCost) { bestCost = cost; best = d; }
+    }
+    this.meteorBest = best;
     return best;
   }
 

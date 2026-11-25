@@ -72,7 +72,9 @@ export function buildTrackMeshes(track, scene) {
   group.add(road);
 
   // ---------- Barreras ----------
+  // (con un hueco en cada cruce con tráfico, para que pasen los coches: ver Obstacles.buildTraffic)
   const barrierMat = new THREE.MeshStandardMaterial({ map: T.barrierTex(), roughness: 0.8, side: THREE.DoubleSide });
+  const inCrossing = (s1, s2) => track.crossings.some((c) => s1 >= c.g0 - 0.01 && s2 <= c.g1 + 0.01);
   for (const side of [-1, 1]) {
     const g = strip(
       track, allRows,
@@ -81,6 +83,7 @@ export function buildTrackMeshes(track, scene) {
         return [[side * LIMIT, h], [side * LIMIT, h + 1.3], [side * (LIMIT + 0.7), h + 1.3], [side * (LIMIT + 0.7), h]];
       },
       (s, k) => [s / 8, [0, 1, 0.92, 0][k]],
+      inCrossing,
     );
     const m = new THREE.Mesh(g, barrierMat);
     m.castShadow = true; m.receiveShadow = true;
@@ -181,6 +184,7 @@ export function buildTrackMeshes(track, scene) {
       const txt = pitText(track.theme, p.liquid);
       const sign = makeSign(txt, p.liquid === 'lava' ? '#d4380d' : p.liquid === 'ice' ? '#2a6fdb' : p.water ? '#1f8a3a' : '#e0a100');
       placeOnTrack(sign, track, p.s0 - 30, side * (LIMIT + 3), track.baseAt(p.s0 - 30));
+      sign.rotation.y += Math.PI; // la cara con el texto, hacia quien llega
       group.add(sign);
     }
   }
@@ -263,6 +267,7 @@ export function buildTrackMeshes(track, scene) {
     for (const side of [-1, 1]) {
       const sign = makeSign(k.name || '¡LAGO HELADO!', '#2a6fdb');
       placeOnTrack(sign, track, k.s0 - 25, side * (LIMIT + 3), track.baseAt(k.s0 - 25));
+      sign.rotation.y += Math.PI; // la cara con el texto, hacia quien llega
       group.add(sign);
     }
   }

@@ -5,6 +5,7 @@
 export const ROAD_HALF = 11; // mitad del ancho del camino de tierra
 export const LIMIT = 15;     // posición de las barreras
 export const CAR_HALF_W = 1.4;
+export const STREET_GAP = 6.5; // en los cruces con tráfico la barrera se abre ±6,5 m alrededor del centro
 
 const DEG = Math.PI / 180;
 
@@ -113,7 +114,13 @@ export class Track {
   buildFeatures() {
     const f = this.circuit.features((k, rel) => this.at(k, rel), LIMIT);
     // listas vacías por defecto: cada circuito pone solo lo que usa
-    Object.assign(this, { plateaus: [], whoops: [], ramps: [], pits: [], mud: [], lakes: [], reserved: [] }, f);
+    Object.assign(this, { plateaus: [], whoops: [], ramps: [], pits: [], mud: [], lakes: [], reserved: [], meteors: [], crossings: [] }, f);
+    // centro de cada cruce (los coches pasan por ahí) y hueco de la barrera, ajustado a las muestras
+    for (const c of this.crossings) {
+      c.s = (c.s0 + c.s1) / 2;
+      c.g0 = Math.ceil((c.s - STREET_GAP) / this.ds) * this.ds;
+      c.g1 = Math.floor((c.s + STREET_GAP) / this.ds) * this.ds;
+    }
     for (const p of this.pits) {
       p.water = !!p.liquid; // se cae dentro de algo (agua, hielo o lava)
       p.top = this.baseAt((p.s0 + p.s1) / 2);

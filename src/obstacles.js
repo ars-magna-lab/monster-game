@@ -1,13 +1,29 @@
 // Obstáculos y elementos de la pista que se mueven o interactúan con los camiones.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { LIMIT, ROAD_HALF } from './track.js';
+import { LIMIT, ROAD_HALF, STREET_GAP } from './track.js';
 import { placeOnTrack } from './trackMesh.js';
 import { HALF_W } from './vehicle.js';
 import * as T from './textures.js';
 import { normPlaces } from './circuits.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
+const UP = new THREE.Vector3(0, 1, 0);
+
+// Lluvia de rocas: cada cuánto cae una (s), cuánto avisa (s), radio del golpe (m), parte de
+// las rocas apuntadas a un camión, separación mínima entre rocas en el aire (m), marca (s)
+export const RAIN_EVERY = [0.6, 0.9];
+export const RAIN_FALL = [1.25, 1.45];
+export const RAIN_HIT_R = 4.5;
+const RAIN_AIMED = 0.7;
+const RAIN_GAP = 12;
+const RAIN_SCORCH = 5;
+const RAIN_POOL = 6;
+// Tráfico: los coches dan la vuelta a TRAFFIC_D metros del eje de la pista; la calle
+// transversal mide STREET_W de ancho (más un paso de cebra a cada lado); la barrera se abre
+// en ±STREET_GAP alrededor del centro del cruce (track.js y trackMesh.js)
+const TRAFFIC_D = 80;
+export const STREET_W = 10;
 
 export class Obstacles {
   constructor(track, scene, game) {
@@ -18,7 +34,22 @@ export class Obstacles {
     this.time = 0;
     this.turbos = []; this.boxes = []; this.logs = []; this.balls = [];
     this.nets = []; this.cars = []; this.barrels = []; this.crocs = [];
+    this.rain = null; this.crossings = []; this.traffic = [];
     this.build();
+    this.buildRain();
+    this.buildTraffic();
+    // lo que la IA esquiva eligiendo carril (rodillos y tráfico: misma cuenta en rollerD)
+    this.dodge = [...this.logs, ...this.traffic];
+  }
+
+  // ¿Hay algún camión a menos de R metros (a lo largo de la pista) del tramo [s0, s1]?
+  // Las mecánicas caras solo se actualizan y se dibujan entonces.
+  anyNear(vehicles, s0, s1, R = 250) {
+    const tr = this.track;
+    for (const v of vehicles) {
+      if (tr.ahead(v.s, s0) < R || tr.ahead(s1, v.s) < R || tr.ahead(s0, v.s) < s1 - s0) return true;
+    }
+    return false;
   }
 
   rel(a, b) {
@@ -274,6 +305,7 @@ export class Obstacles {
     for (const side of [-1, 1]) {
       const sign = makeBoard(text, color);
       placeOnTrack(sign, this.track, s, side * (LIMIT + 3), 0);
+      sign.rotation.y += Math.PI; // la cara con el texto, hacia quien llega
       this.group.add(sign);
     }
   }
@@ -291,12 +323,15 @@ export class Obstacles {
     const ahead = (o) => { const r = this.rel(o.s, s); return r > 2 && r < dist; };
     if (this.logs.some(ahead)) return true;
     if (this.balls.some(ahead)) return true;
+    if (this.traffic.some((o) => ahead(o) && Math.abs(o.d) < LIMIT + o.r)) return true;
     if (this.nets.some((n) => ahead(n) && n.open > 0.3)) return true;
     return false;
   }
 
   // Para la IA: dónde estará (d) un rodillo dentro de dt segundos (misma cuenta que en update)
   rollerD(o, dt) {
+    // tráfico: avanza a velocidad constante y da la vuelta lejos de la pista
+    if (o.loop) return o.dir * ((((this.time + dt) * o.speed + o.off) % o.P + o.P) % o.P - o.P / 2);
     const u = (((this.time + dt) / o.period + o.phase) % 1 + 1) % 1;
     return o.amp * (u < 0.5 ? 4 * u - 1 : 3 - 4 * u);
   }
@@ -492,6 +527,277 @@ export class Obstacles {
 
     // cocodrilos
     this.updateCrocs(dt, vehicles);
+
+    // lluvia de rocas y tráfico (solo con camiones cerca)
+    this.updateRain(dt, vehicles);
+    this.updateTraffic(dt, vehicles);
+  }
+
+  // ---------- Lluvia de rocas de fuego (volcán) ----------
+  // Cada roca avisa con una diana en el suelo que se va llenando mientras cae; al llegar,
+  // explota y golpea a quien esté cerca. Mallas de un pool pequeño, sin luces nuevas.
+  buildRain() {
+    const z = this.track.meteors[0];
+    if (!z) return;
+    const g = new THREE.Group();
+    this.group.add(g);
+    // roca incandescente con su estela: una sola malla (colores por vértice, sin luz)
+    const rock = new THREE.DodecahedronGeometry(1.5, 0).toNonIndexed();
+    const rc = [], pal = [0xff5a00, 0xc02800, 0xff9a20, 0x7a1800];
+    for (let f = 0; f < rock.attributes.position.count / 3; f++) {
+      const c = new THREE.Color(pal[f % pal.length]);
+      for (let k = 0; k < 3; k++) rc.push(c.r, c.g, c.b);
+    }
+    rock.setAttribute('color', new THREE.Float32BufferAttribute(rc, 3));
+    const tail = new THREE.ConeGeometry(1.25, 11, 7, 1, true).translate(0, 5.5, 0).toNonIndexed();
+    const tc = [];
+    const tailPos = tail.attributes.position;
+    for (let i = 0; i < tailPos.count; i++) {
+      const c = new THREE.Color(0xffd040).lerp(new THREE.Color(0xff3a00), tailPos.getY(i) / 11);
+      tc.push(c.r, c.g, c.b);
+    }
+    tail.setAttribute('color', new THREE.Float32BufferAttribute(tc, 3));
+    tail.deleteAttribute('uv'); rock.deleteAttribute('uv');
+    const meteorGeo = mergeGeometries([rock, tail]);
+    rock.dispose(); tail.dispose();
+    const meteorMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
+    // diana: aro amarillo del tamaño del golpe y disco rojo que crece hasta llenarlo
+    const decal = { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 };
+    const ringGeo = new THREE.RingGeometry(RAIN_HIT_R - 0.7, RAIN_HIT_R, 28).rotateX(-Math.PI / 2);
+    const discGeo = new THREE.CircleGeometry(RAIN_HIT_R - 0.7, 20).rotateX(-Math.PI / 2);
+    const discMat = new THREE.MeshBasicMaterial({ color: 0xd42000, ...decal });
+    const scorchGeo = new THREE.CircleGeometry(3.0, 16).rotateX(-Math.PI / 2);
+    const scorchMat = new THREE.MeshBasicMaterial({ color: 0x2e1c14, ...decal });
+    const free = [], scorch = [];
+    for (let i = 0; i < RAIN_POOL; i++) {
+      const m = new THREE.Mesh(meteorGeo, meteorMat);
+      const ringMat = new THREE.MeshBasicMaterial({ color: 0xffd000, ...decal });
+      const disc = new THREE.Mesh(discGeo, discMat);
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      const mark = new THREE.Group();
+      mark.add(disc, ring);
+      const sc = new THREE.Mesh(scorchGeo, scorchMat);
+      m.visible = mark.visible = sc.visible = false;
+      g.add(m, mark, sc);
+      free.push({ rock: m, mark, disc, ringMat });
+      scorch.push({ mesh: sc, t: 0 });
+    }
+    this.rain = { s0: z.s0, s1: z.s1, group: g, timer: 0.3, active: [], free, scorch, on: false, aimed: new Map(), emitT: 0 };
+    g.visible = false;
+    if (z.sign !== undefined) this.signs('¡LLUVIA DE ROCAS!', '#ff6a00', z.sign);
+  }
+
+  // Lanza una roca: unas apuntadas un poco por delante de algún camión que esté en la zona
+  // y otras al azar. Nunca dos a la vez en la misma franja de pista: siempre queda hueco.
+  spawnMeteor(vehicles) {
+    const tr = this.track, R = this.rain;
+    if (!R.free.length) return;
+    const T = rand(RAIN_FALL[0], RAIN_FALL[1]);
+    const len = R.s1 - R.s0;
+    const clear = (s) => R.active.every((m) => Math.abs(this.rel(m.s, s)) > RAIN_GAP);
+    let s = null, d = 0;
+    if (Math.random() < RAIN_AIMED) {
+      const cands = vehicles.filter((v) => v.state === 'ok' && tr.ahead(R.s0 - 30, v.s) < len + 30 && !(R.aimed.get(v) > this.time));
+      if (cands.length) {
+        const v = cands[Math.floor(Math.random() * cands.length)];
+        const ts = tr.wrap(v.s + Math.max(0, v.vF) * T * rand(0.85, 1.05));
+        if (tr.ahead(R.s0 + 2, ts) < len - 4 && clear(ts)) {
+          s = ts; d = Math.max(-12, Math.min(12, v.d + rand(-2, 2)));
+          R.aimed.set(v, this.time + 1.4);
+        }
+      }
+    }
+    for (let k = 0; s === null && k < 4; k++) {
+      const ts = R.s0 + rand(3, len - 3);
+      if (clear(ts)) { s = ts; d = rand(-12, 12); }
+    }
+    if (s === null) return;
+    const m = R.free.pop();
+    const P = tr.pointAt(s, d);
+    m.s = s; m.d = d; m.t = 0; m.T = T;
+    m.x = P.x; m.z = P.z; m.y = tr.baseAt(s);
+    // cae en diagonal desde lo alto, del lado del volcán
+    m.sx = P.x + 22; m.sy = m.y + 62; m.sz = P.z - 16;
+    const back = new THREE.Vector3(m.sx - m.x, m.sy - m.y, m.sz - m.z).normalize();
+    m.rock.quaternion.setFromUnitVectors(UP, back);
+    m.rock.visible = true;
+    m.mark.position.set(P.x, m.y + 0.09, P.z);
+    m.mark.visible = true;
+    m.disc.scale.setScalar(0.05);
+    m.ringMat.color.setHex(0xffd000);
+    m.ai = null; // decisiones de la IA sobre esta roca (ver AIDriver.meteorLane)
+    R.active.push(m);
+  }
+
+  updateRain(dt, vehicles) {
+    const R = this.rain;
+    if (!R) return;
+    if (!this.anyNear(vehicles, R.s0, R.s1)) {
+      // nadie cerca: no cae nada y no se actualiza nada
+      if (R.on) {
+        for (const m of R.active) { m.rock.visible = m.mark.visible = false; R.free.push(m); }
+        R.active.length = 0;
+        for (const c of R.scorch) { c.t = 0; c.mesh.visible = false; }
+        R.aimed.clear();
+        R.on = false; R.group.visible = false;
+      }
+      return;
+    }
+    R.on = true; R.group.visible = true;
+    R.timer -= dt;
+    if (R.timer <= 0) { R.timer = rand(RAIN_EVERY[0], RAIN_EVERY[1]); this.spawnMeteor(vehicles); }
+    const fx = this.game.fx;
+    R.emitT += dt;
+    const emit = R.emitT >= 1 / 30;
+    if (emit) R.emitT = 0;
+    for (let i = R.active.length - 1; i >= 0; i--) {
+      const m = R.active[i];
+      m.t += dt;
+      const f = Math.min(1, m.t / m.T);
+      const x = m.sx + (m.x - m.sx) * f, y = m.sy + (m.y + 1.2 - m.sy) * f, z = m.sz + (m.z - m.sz) * f;
+      m.rock.position.set(x, y, z);
+      m.disc.scale.setScalar(0.05 + 0.95 * f);
+      // el último momento: el aro parpadea
+      if (m.T - m.t < 0.4) m.ringMat.color.setHex(Math.floor(m.t * 14) % 2 ? 0xff2000 : 0xffffff);
+      if (emit) fx.glow.emit({ x, y, z, vx: (Math.random() - 0.5) * 3, vy: 2, vz: (Math.random() - 0.5) * 3, life: 0.45, size: 2.2, grow: -2, color: [1, 0.5, 0.12], alpha: 1, gravity: 0, drag: 2 });
+      if (m.t < m.T) continue;
+      this.meteorImpact(m, vehicles);
+      m.rock.visible = m.mark.visible = false;
+      R.active.splice(i, 1);
+      R.free.push(m);
+    }
+    for (const c of R.scorch) {
+      if (c.t <= 0) continue;
+      c.t -= dt;
+      c.mesh.scale.setScalar(Math.max(0.01, Math.min(1, c.t / 1.2)));
+      if (c.t <= 0) c.mesh.visible = false;
+    }
+  }
+
+  meteorImpact(m, vehicles) {
+    const game = this.game, R = this.rain;
+    game.fx.explosion(m.x, m.y, m.z);
+    game.boom(m.x, m.y, m.z);
+    for (const v of vehicles) {
+      if (v.state !== 'ok') continue;
+      const dx = v.x - m.x, dz = v.z - m.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist < RAIN_HIT_R && v.y < m.y + 4) {
+        const k = 1 / Math.max(0.5, dist);
+        // a quien acaba de llevarse una no se le apunta en un rato (que no le caigan en cadena)
+        if (v.hit({ dirX: dx * k, dirZ: dz * k, push: 6, up: 10, speedMul: 0.5, stun: 1.1, kind: 'meteor' })) R.aimed.set(v, this.time + 2.5);
+      }
+    }
+    // marca chamuscada unos segundos (la más vieja se reutiliza)
+    let c = R.scorch[0];
+    for (const o of R.scorch) if (o.t < c.t) c = o;
+    c.t = RAIN_SCORCH;
+    c.mesh.position.set(m.x, m.y + 0.07, m.z);
+    c.mesh.rotation.y = Math.random() * 6;
+    c.mesh.scale.setScalar(1);
+    c.mesh.visible = true;
+  }
+
+  // ---------- Tráfico que cruza (ciudad) ----------
+  // Calle transversal con coches a velocidad constante, siempre en el mismo sentido en cada
+  // cruce y con huecos fijos entre ellos. Se tratan como los rodillos (otra ley de movimiento
+  // en rollerD), así la IA los esquiva eligiendo carril con rollerLane.
+  buildTraffic() {
+    const tr = this.track;
+    if (!tr.crossings.length) return;
+    const A = trafficAssets();
+    this.trafficAssets = A;
+    tr.crossings.forEach((c, ci) => {
+      const h = this.holder(c.s);
+      const base = tr.baseAt(c.s);
+      // postes justo donde acaba la barrera (el hueco va ajustado a las muestras de la pista)
+      const gate = new THREE.Group();
+      gate.scale.z = (c.g1 - c.g0) / (2 * STREET_GAP);
+      gate.position.z = (c.g0 + c.g1) / 2 - c.s;
+      h.add(gate);
+      const street = new THREE.Mesh(A.streetGeo, A.streetMat);
+      street.position.y = 0.06;
+      street.receiveShadow = true;
+      h.add(street);
+      const st = new THREE.Mesh(A.staticGeo, A.metalMat);
+      st.castShadow = true;
+      const arms = new THREE.Mesh(A.armGeo, A.armMat);
+      arms.castShadow = true;
+      gate.add(st, arms, new THREE.Mesh(A.kerbGeo, A.kerbMat));
+      h.add(new THREE.Mesh(A.lampGeoA, A.lampA), new THREE.Mesh(A.lampGeoB, A.lampB));
+      // coches: posiciones fijas en un circuito cerrado de P metros (vuelven a salir por el otro lado)
+      const kinds = ci % 2 ? ['car', 'car', 'van', 'car', 'car'] : ['car', 'bus', 'car', 'car', 'car'];
+      const P = 2 * TRAFFIC_D;
+      const total = kinds.reduce((a, k) => a + A.size[k].len, 0);
+      const gap = (P - total) / kinds.length;
+      const jit = [1.18, 0.86, 1.08, 0.88, 1.0];
+      let q = 0;
+      const cars = [];
+      kinds.forEach((k, i) => {
+        const sz = A.size[k];
+        const geo = k === 'car' ? A.carGeos[(ci * 2 + i) % A.carGeos.length] : A.geos[k];
+        const mesh = new THREE.Mesh(geo, A.carMat);
+        mesh.castShadow = true;
+        mesh.rotation.y = c.dir > 0 ? -Math.PI / 2 : Math.PI / 2;
+        h.add(mesh);
+        const o = {
+          s: c.s, loop: true, dir: c.dir, speed: c.speed, P, off: q + sz.len / 2, r: sz.len / 2, len: sz.w,
+          ball: true, d: 0, vd: c.dir * c.speed, mesh, top: base + sz.h, kind: k,
+        };
+        q += sz.len + gap * jit[i % jit.length];
+        cars.push(o);
+        this.traffic.push(o);
+      });
+      if (c.sign !== undefined) this.signs('¡CRUCE!', '#ffcc00', c.sign);
+      this.crossings.push({ c, holder: h, cars, on: true, hornT: 0 });
+    });
+  }
+
+  updateTraffic(dt, vehicles) {
+    if (!this.crossings.length) return;
+    const tr = this.track, game = this.game, A = this.trafficAssets;
+    let any = false;
+    for (const X of this.crossings) {
+      const on = this.anyNear(vehicles, X.c.s0, X.c.s1);
+      if (on !== X.on) { X.on = on; X.holder.visible = on; }
+      if (!on) continue;
+      any = true;
+      for (const o of X.cars) {
+        o.d = this.rollerD(o, 0);
+        o.mesh.position.x = -o.d;
+        if (Math.abs(o.d) > LIMIT + o.r + HALF_W) continue;
+        for (const v of vehicles) {
+          if (v.state !== 'ok') continue;
+          if (Math.abs(this.rel(v.s, o.s)) < o.len / 2 + 2.6 && Math.abs(v.d - o.d) < o.r + HALF_W && v.y < o.top - 0.3) {
+            const P = tr.pointAt(v.s);
+            if (v.hit({ dirX: P.rx * o.dir, dirZ: P.rz * o.dir, push: 12, up: 3, speedMul: 0.4, stun: 0.9, kind: 'car' })) {
+              game.fx.sparks(v.x, v.y + 1.5, v.z, 10);
+            }
+          }
+        }
+      }
+      // claxon flojo si un jugador se acerca al cruce y viene un coche
+      X.hornT -= dt;
+      if (X.hornT > 0) continue;
+      for (const v of vehicles) {
+        if (!v.isPlayer || v.state !== 'ok') continue;
+        const ahead = tr.ahead(v.s, X.c.s);
+        if (ahead < 12 || ahead > 70) continue;
+        const car = X.cars.find((o) => o.dir * o.d < -LIMIT + 2 && o.dir * o.d > -45);
+        if (car) {
+          const P = tr.pointAt(car.s, car.d);
+          game.sound3d('horn', P.x, P.z, 0.55);
+          X.hornT = 3.5;
+          break;
+        }
+      }
+    }
+    // luces de aviso que se encienden por turnos
+    if (any) {
+      const ph = Math.floor(this.time * 2.4) % 2;
+      A.lampA.color.setHex(ph ? 0xffb000 : 0x3a2a10);
+      A.lampB.color.setHex(ph ? 0x3a2a10 : 0xffb000);
+    }
   }
 
   explodeBarrel(b, vehicles) {
@@ -743,4 +1049,162 @@ function makeCroc() {
   }
   group.scale.setScalar(1.5);
   return { group, headPivot, jawPivot, tail };
+}
+
+// ---------- Piezas del tráfico de la ciudad ----------
+// Se crean una vez por circuito y las comparten los dos cruces: coches con colores por
+// vértice (una sola malla y un solo material para todos), calle, postes y luces.
+const tint = (geo, hex) => {
+  const g = geo.index ? geo.toNonIndexed() : geo;
+  if (g !== geo) geo.dispose();
+  const c = new THREE.Color(hex), n = g.attributes.position.count, a = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { a[i * 3] = c.r; a[i * 3 + 1] = c.g; a[i * 3 + 2] = c.b; }
+  g.setAttribute('color', new THREE.BufferAttribute(a, 3));
+  g.deleteAttribute('uv');
+  return g;
+};
+const tbox = (w, h, l, x, y, z, hex) => tint(new THREE.BoxGeometry(w, h, l).translate(x, y, z), hex);
+const twheels = (x, zs, r, w = 0.32) => {
+  const out = [];
+  for (const sx of [-x, x]) for (const z of zs) out.push(tint(new THREE.CylinderGeometry(r, r, w, 10).rotateZ(Math.PI / 2).translate(sx, r, z), 0x161616));
+  return out;
+};
+const GLASS = 0x7fa6bd, TYRE = 0x161616;
+
+function trafficCar(color) {
+  return mergeGeometries([
+    tbox(1.9, 0.75, 4.3, 0, 0.75, 0, color),
+    tbox(1.7, 0.65, 2.1, 0, 1.45, -0.25, color),
+    tbox(1.74, 0.45, 1.9, 0, 1.47, -0.25, GLASS),
+    tbox(1.56, 0.48, 0.06, 0, 1.45, 0.81, GLASS),
+    tbox(0.42, 0.18, 0.06, -0.6, 0.85, 2.16, 0xfff2b0), tbox(0.42, 0.18, 0.06, 0.6, 0.85, 2.16, 0xfff2b0),
+    tbox(0.42, 0.18, 0.06, -0.6, 0.85, -2.16, 0xd01010), tbox(0.42, 0.18, 0.06, 0.6, 0.85, -2.16, 0xd01010),
+    tbox(1.95, 0.22, 0.2, 0, 0.45, 2.17, TYRE), tbox(1.95, 0.22, 0.2, 0, 0.45, -2.17, TYRE),
+    ...twheels(0.85, [-1.35, 1.35], 0.38),
+  ]);
+}
+
+function trafficBus() {
+  return mergeGeometries([
+    tbox(2.5, 2.5, 10, 0, 1.65, 0, 0xf2b700),
+    tbox(2.54, 0.9, 8.4, 0, 2.2, -0.2, GLASS),
+    tbox(2.2, 1.3, 0.06, 0, 2.0, 5.02, GLASS),
+    tbox(2.54, 0.25, 10.02, 0, 1.05, 0, 0x2a5db0),
+    tbox(2.56, 0.35, 0.25, 0, 0.55, 5.0, TYRE), tbox(2.56, 0.35, 0.25, 0, 0.55, -5.0, TYRE),
+    tbox(0.5, 0.25, 0.06, -0.8, 0.9, 5.02, 0xfff2b0), tbox(0.5, 0.25, 0.06, 0.8, 0.9, 5.02, 0xfff2b0),
+    ...twheels(1.1, [-3.4, 3.4], 0.55, 0.4),
+  ]);
+}
+
+function trafficVan() {
+  return mergeGeometries([
+    tbox(2.1, 1.7, 1.8, 0, 1.25, 2.3, 0xe23d28),
+    tbox(2.14, 0.6, 1.0, 0, 1.75, 2.45, GLASS),
+    tbox(1.9, 0.62, 0.06, 0, 1.72, 3.21, GLASS),
+    tbox(2.3, 2.6, 4.6, 0, 1.75, -0.95, 0xf4f4f4),
+    tbox(2.34, 0.45, 4.62, 0, 1.6, -0.95, 0xe23d28),
+    tbox(0.4, 0.2, 0.06, -0.7, 0.85, 3.21, 0xfff2b0), tbox(0.4, 0.2, 0.06, 0.7, 0.85, 3.21, 0xfff2b0),
+    ...twheels(0.95, [2.3, -2.4], 0.5, 0.36),
+  ]);
+}
+
+function stripeTex(a, b, n = 8) {
+  const c = document.createElement('canvas');
+  c.width = 16; c.height = 128;
+  const x = c.getContext('2d');
+  for (let i = 0; i < n; i++) { x.fillStyle = i % 2 ? b : a; x.fillRect(0, (i * 128) / n, 16, 128 / n); }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+// Calle transversal: asfalto, aceras, pasos de cebra y cuadrícula amarilla donde cruza la pista
+function streetTex(halfLen, w, zebra) {
+  const W = 2048, H = 256;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  const px = W / (2 * halfLen), pz = H / (w + 2 * zebra);
+  const X = (m) => W / 2 + m * px, Z = (m) => H / 2 + m * pz;
+  g.fillStyle = '#8f9196'; g.fillRect(0, 0, W, H);
+  // juntas de las baldosas de la acera
+  g.fillStyle = '#7f8186';
+  for (let m = -halfLen; m < halfLen; m += 1.5) { g.fillRect(X(m), 0, 1, Z(-w / 2)); g.fillRect(X(m), Z(w / 2), 1, H); }
+  g.fillStyle = '#3a3c40'; g.fillRect(0, Z(-w / 2), W, w * pz);
+  const r = (() => { let s = 7; return () => ((s = (s * 16807) % 2147483647) / 2147483647); })();
+  for (let i = 0; i < 2600; i++) {
+    const v = 50 + Math.floor(r() * 30);
+    g.fillStyle = `rgb(${v},${v},${v + 3})`;
+    g.fillRect(r() * W, Z(-w / 2) + r() * w * pz, 2, 2);
+  }
+  // bordillos
+  g.fillStyle = '#c9c9c4';
+  g.fillRect(0, Z(-w / 2) - 3, W, 3); g.fillRect(0, Z(w / 2), W, 3);
+  // líneas discontinuas del carril, fuera de la pista
+  g.fillStyle = '#e8e8e8';
+  for (let m = -halfLen; m < halfLen; m += 6) {
+    if (Math.abs(m + 1.5) < LIMIT + 3) continue;
+    g.fillRect(X(m), Z(-w / 2 + 0.8), 3 * px, 4);
+    g.fillRect(X(m), Z(w / 2 - 0.8) - 4, 3 * px, 4);
+  }
+  // donde cruza la pista: asfalto, pasos de cebra y cuadrícula amarilla
+  const x0 = X(-LIMIT), x1 = X(LIMIT);
+  g.fillStyle = '#45474b';
+  g.fillRect(x0, 0, x1 - x0, Z(-w / 2)); g.fillRect(x0, Z(w / 2), x1 - x0, H - Z(w / 2));
+  g.fillStyle = '#f2f2f2';
+  for (let m = -LIMIT + 0.6; m < LIMIT - 0.5; m += 1.2) {
+    g.fillRect(X(m), Z(-w / 2 - zebra + 0.35), 0.6 * px, (zebra - 0.7) * pz);
+    g.fillRect(X(m), Z(w / 2 + 0.35), 0.6 * px, (zebra - 0.7) * pz);
+  }
+  g.save();
+  g.beginPath(); g.rect(x0, Z(-w / 2), x1 - x0, w * pz); g.clip();
+  g.strokeStyle = '#ffcc00'; g.lineWidth = 5;
+  for (let m = -LIMIT - w; m < LIMIT + w; m += 2.2) {
+    g.beginPath(); g.moveTo(X(m), Z(-w / 2)); g.lineTo(X(m - w), Z(w / 2)); g.stroke();
+    g.beginPath(); g.moveTo(X(m), Z(-w / 2)); g.lineTo(X(m + w), Z(w / 2)); g.stroke();
+  }
+  g.restore();
+  g.strokeStyle = '#ffcc00'; g.lineWidth = 8;
+  g.strokeRect(x0 + 4, Z(-w / 2) + 4, x1 - x0 - 8, w * pz - 8);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  return t;
+}
+
+function trafficAssets() {
+  const size = { car: { len: 4.3, w: 1.9, h: 1.8 }, bus: { len: 10, w: 2.5, h: 2.9 }, van: { len: 6.6, w: 2.3, h: 3.05 } };
+  const carGeos = [0x3d7ebf, 0xc0392b, 0x27ae60, 0xf39c12, 0x8e44ad, 0xecf0f1].map(trafficCar);
+  const geos = { bus: trafficBus(), van: trafficVan() };
+  const carMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.15 });
+  // calle
+  const halfLen = TRAFFIC_D + 10, zebra = 3;
+  const streetGeo = new THREE.PlaneGeometry(2 * halfLen, STREET_W + 2 * zebra).rotateX(-Math.PI / 2);
+  const streetMat = new THREE.MeshStandardMaterial({ map: streetTex(halfLen, STREET_W, zebra), roughness: 0.95, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+  // en coordenadas del cruce: x = -d, z = a lo largo de la pista
+  const P = LIMIT + 0.35, G = STREET_GAP;
+  const metal = [], arm = [], kerb = [], la = [], lb = [];
+  for (const sx of [-1, 1]) {
+    for (const z of [-G, G]) metal.push(new THREE.BoxGeometry(1.0, 2.0, 1.0).translate(sx * P, 1.0, z));
+    // barrera levadiza abierta (de pie) en un poste de cada lado
+    arm.push(new THREE.BoxGeometry(0.3, 6.5, 0.3).translate(0, 3.25, 0).rotateZ(sx * 0.12).translate(sx * P, 2.0, sx * G));
+    // bordillo bajo donde falta la barrera: los camiones topan con él, los coches pasan por encima
+    kerb.push(new THREE.BoxGeometry(0.8, 0.32, 2 * G - 1).translate(sx * P, 0.16, 0));
+    // poste de las luces de aviso, antes del cruce y mirando a los camiones
+    const lx = sx * (LIMIT + 2.6), lz = -G - 3;
+    metal.push(new THREE.CylinderGeometry(0.14, 0.14, 5.6, 6).translate(lx, 2.8, lz));
+    metal.push(new THREE.BoxGeometry(2.1, 0.95, 0.4).translate(lx, 5.8, lz));
+    la.push(new THREE.SphereGeometry(0.36, 10, 8).translate(lx - 0.55, 5.8, lz - 0.25));
+    lb.push(new THREE.SphereGeometry(0.36, 10, 8).translate(lx + 0.55, 5.8, lz - 0.25));
+  }
+  const merge = (list) => { const m = mergeGeometries(list); list.forEach((x) => x.dispose()); return m; };
+  return {
+    size, carGeos, geos, carMat, streetGeo, streetMat,
+    staticGeo: merge(metal), armGeo: merge(arm), kerbGeo: merge(kerb), lampGeoA: merge(la), lampGeoB: merge(lb),
+    metalMat: new THREE.MeshStandardMaterial({ color: 0x30343a, metalness: 0.5, roughness: 0.5 }),
+    armMat: new THREE.MeshStandardMaterial({ map: stripeTex('#d42a20', '#f4f4f4'), roughness: 0.6 }),
+    kerbMat: new THREE.MeshStandardMaterial({ color: 0xffc400, roughness: 0.7 }),
+    lampA: new THREE.MeshBasicMaterial({ color: 0xffb000 }),
+    lampB: new THREE.MeshBasicMaterial({ color: 0x3a2a10 }),
+  };
 }
