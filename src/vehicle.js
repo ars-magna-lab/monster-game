@@ -45,7 +45,7 @@ export class Vehicle {
     this.boost = 0; this.stun = 0; this.spin = 0; this.spinT = 0; this.spinDur = 0;
     this.state = 'ok'; this.stateTimer = 0; this.fall = null;
     this.comp = 0; this.compV = 0; this.pitch = 0; this.roll = 0;
-    this.item = null; this.itemRoll = 0; this.invuln = 0; this.hitCool = 0;
+    this.item = null; this.itemRoll = 0; this.invuln = 0; this.blink = 0; this.hitCool = 0;
     this.wrongT = 0; this.stuckT = 0; this.airT = 0; this.surf = 'road';
     this.control = { steer: 0, throttle: 0, brake: 0 };
     this.vF = 0; this.accelVis = 0; this.steerVis = 0; this.lastSlopeV = 0;
@@ -78,6 +78,7 @@ export class Vehicle {
     }
     this.placeAt(s, clamp(d, -8, 8), speed);
     this.invuln = 1.6;
+    this.blink = 1.6;
     this.events.push({ type: 'respawn' });
   }
 
@@ -133,6 +134,7 @@ export class Vehicle {
     this.prevS = this.s;
     this.boost = Math.max(0, this.boost - dt);
     this.invuln = Math.max(0, this.invuln - dt);
+    this.blink = Math.max(0, this.blink - dt);
     this.hitCool = Math.max(0, this.hitCool - dt);
     if (this.stun > 0) this.stun = Math.max(0, this.stun - dt);
     if (this.spinDur > 0) {
@@ -193,7 +195,7 @@ export class Vehicle {
       vF *= Math.exp(-7 * dt);
       vL *= Math.exp(-7 * dt);
       this.stateTimer -= dt;
-      if (this.stateTimer <= 0) { this.state = 'ok'; this.netCaught = null; this.invuln = 0.8; }
+      if (this.stateTimer <= 0) { this.state = 'ok'; this.netCaught = null; this.invuln = 0.8; this.blink = 0.8; }
     }
     this.accelVis += ((vF - vF0) / Math.max(dt, 1e-4) - this.accelVis) * Math.min(1, dt * 6);
     this.vF = vF;
@@ -355,7 +357,8 @@ export class Vehicle {
     m.position.set(this.x, this.y, this.z);
     m.rotation.order = 'YXZ';
     m.rotation.set(-this.pitch, Math.PI / 2 - this.th + this.spin, this.roll);
-    const blink = this.invuln > 0 && this.state === 'ok' ? Math.floor(this.invuln * 12) % 2 === 0 : true;
+    // parpadea solo al reaparecer o al salir de la red; el supersalto protege sin parpadear
+    const blink = this.blink > 0 && this.state === 'ok' ? Math.floor(this.blink * 12) % 2 === 0 : true;
     m.visible = blink;
     animateTruck(this.parts, {
       wheelSpin: (this.onGround ? this.vF : this.control.throttle * 30) * dt / WHEEL_R,

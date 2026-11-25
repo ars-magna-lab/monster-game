@@ -20,6 +20,8 @@ export class AIDriver {
     this.itemDelay = 0;
     this.noise = 0;
     this.noiseT = 0;
+    this.rollerTry = null;
+    this.rollerBest = null;
   }
 
   laneAt(s) {
@@ -72,8 +74,9 @@ export class AIDriver {
     }
     const speed = Math.max(0, v.vF);
     const la = 9 + speed * 0.45;
-    const want = this.laneAt(v.s + la);
-    this.lane += (want - this.lane) * Math.min(1, dt * 1.2);
+    const rl = this.rollerLane(game, speed);
+    const want = rl ?? this.laneAt(v.s + la);
+    this.lane += (want - this.lane) * Math.min(1, dt * (rl === null ? 1.2 : 3));
     const P = tr.pointAt(v.s + la, this.lane);
     this.noiseT -= dt;
     if (this.noiseT <= 0) { this.noiseT = rand(0.3, 1.2); this.noise = rand(-0.12, 0.12) / this.skill; }
@@ -92,7 +95,8 @@ export class AIDriver {
 
     // objetos
     let useItem = false;
-    if (v.item) {
+    if (v.item === 'jump' && this.rocketClose(game)) useItem = true;
+    else if (v.item) {
       this.itemDelay -= dt;
       if (this.itemDelay <= 0) {
         if (v.item === 'nitro') {
@@ -120,5 +124,51 @@ export class AIDriver {
       this.itemDelay = rand(0.8, 3);
     }
     return { steer, throttle, brake, item: useItem };
+  }
+
+  // Zona de rodillos (troncos, bolas...): carril por el que cruzarla sin que le pillen, o null.
+  // Se decide una vez por pasada si se intenta (más a menudo cuanto más hábil es el piloto).
+  rollerLane(game, speed) {
+    const v = this.v, tr = this.track, ob = game.obstacles;
+    const zone = ob.logs.map((o) => {
+      let ds = tr.ahead(v.s, o.s);
+      if (ds > tr.length / 2) ds -= tr.length; // ya pasado: negativo
+      return { o, ds, reach: o.len / 2 + 2.6 };
+    }).filter((z) => z.ds > -z.reach && z.ds < 80);
+    if (!zone.length) { this.rollerTry = null; return null; }
+    if (this.rollerTry == null) this.rollerTry = Math.random() < 0.5 * this.skill;
+    if (!this.rollerTry) return null;
+    const sp = Math.max(speed, 10);
+    let best = null, bestCost = Infinity;
+    for (let d = -10; d <= 10; d++) {
+      let cost = Math.abs(d - v.d) * 0.05 - (d === this.rollerBest ? 0.3 : 0);
+      for (const { o, ds, reach } of zone) {
+        const t0 = Math.max(0, (ds - reach) / sp - 0.2), t1 = (ds + reach) / sp + 0.2;
+        for (let t = t0; t <= t1; t += 0.05) {
+          // el camión no cambia de carril al instante: unos 7 m/s de lado
+          const dv = v.d + Math.max(-7 * t, Math.min(7 * t, d - v.d));
+          if (Math.abs(ob.rollerD(o, t) - dv) < o.r + 2 * v.size + 0.6) { cost += 10; break; }
+        }
+      }
+      if (cost < bestCost) { bestCost = cost; best = d; }
+    }
+    this.rollerBest = best;
+    return best;
+  }
+
+  // ¿Un cohete que va a por mí está a punto de alcanzarme? Se decide una vez por cohete
+  // si se intenta esquivar con el supersalto (más a menudo cuanto más hábil es el piloto).
+  rocketClose(game) {
+    const v = this.v, tr = this.track;
+    for (const p of game.projectiles.list) {
+      if (p.kind !== 'rocket' || p.target !== v || p.dead) continue;
+      const gap = tr.ahead(p.s, v.s);
+      if (gap > tr.length / 2) continue;
+      const tt = (gap - 2.6 * v.size) / Math.max(1, p.speed - v.vF);
+      if (tt > 0.35) continue;
+      if (p.aiDodge === undefined) p.aiDodge = Math.random() < 0.4 * this.skill;
+      if (p.aiDodge) return true;
+    }
+    return false;
   }
 }
