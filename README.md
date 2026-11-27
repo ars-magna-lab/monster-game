@@ -143,7 +143,7 @@ terminan el campeonato. Se guardan las copas ganadas y la mejor puntuación. Val
 ```bash
 npm install
 npm start         # servidor local en http://localhost:8080 (necesario para dos ventanas)
-npm run build     # compila src/ en dist/game.js
+npm run build     # compila src/ en dist/game.js y sella la versión (dist/version.json)
 npm run dev       # recompila al guardar
 npm test          # prueba de humo (también: node tools/smoke.mjs dos|teclado|carrera) en Chrome sin interfaz (capturas en shots/ y carrera simulada)
 node tools/shot.mjs salida.png "g.startRace()" 2000   # captura de depuración
@@ -168,6 +168,11 @@ La música se sintetiza en `src/music.js`, pero el juego carga los dos temas ya 
 `npm run musica` (`node tools/music.mjs comprobar` avisa si no coinciden). Abriendo `index.html` como fichero
 el navegador no deja descargar los MP3: ahí la música se sintetiza la primera vez (tarda unos minutos) y
 queda guardada en el navegador.
+
+La portada enseña abajo a la izquierda la fecha de la versión que está corriendo. La página pregunta por
+`dist/version.json` sin caché cada vez que se abre y pide el juego con ese número, así que el navegador no puede
+quedarse con una copia vieja; si la pestaña lleva horas abierta y se publica algo nuevo, se recarga sola al volver
+a la portada. Por eso hay que subir siempre juntos `dist/game.js`, `dist/version.json` e `index.html`.
 
 Añade `?auto` a la URL para que el ordenador conduzca tu camión (sirve de demostración).
 

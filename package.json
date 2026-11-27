@@ -5,8 +5,8 @@
   "description": "Carreras de monster trucks en 3D para el navegador",
   "scripts": {
     "start": "node tools/serve.mjs",
-    "build": "esbuild src/main.js --bundle --minify --format=iife --target=es2020 --outfile=dist/game.js",
-    "dev": "esbuild src/main.js --bundle --format=iife --target=es2020 --sourcemap --outfile=dist/game.js --watch",
+    "build": "node tools/build.mjs",
+    "dev": "node tools/build.mjs --watch",
     "test": "node tools/smoke.mjs",
     "musica": "node --no-warnings tools/music.mjs todos",
     "test:pista": "node tools/roadcheck.mjs 90 clasico 2 && node tools/roadcheck.mjs 90 nieve 2 && node tools/roadcheck.mjs 90 clasico 1 && node tools/roadcheck.mjs 90 ciudad 1 && node tools/roadcheck.mjs 90 volcan 1",

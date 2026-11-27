@@ -22,6 +22,9 @@ import { FinishCups } from './meta.js';
 import { newCup, addRace, standings, buildPodium } from './copa.js';
 
 const STEP = 1 / 120;
+// Sello de la compilación (lo pone tools/build.mjs): se enseña en la portada y sirve para saber si
+// hay publicada una versión más nueva que la que está corriendo
+const BUILD = typeof __BUILD__ !== 'undefined' ? __BUILD__ : { id: '', date: 'desarrollo' };
 const DIFF = {
   // «Muy fácil», para los más pequeños. Rivales lentos y torpes que esperan al jugador (band: cuánto
   // frenan si van por delante, cuánto aprietan si van por detrás, y en cuántos metros) y ayudas
@@ -199,7 +202,8 @@ class Game {
 
     window.addEventListener('resize', () => this.resize());
     this.resize();
-    document.addEventListener('visibilitychange', () => { if (document.hidden && (this.state === 'race' || this.state === 'countdown')) this.pause(); });
+    document.addEventListener('visibilitychange', () => { if (document.hidden && (this.state === 'race' || this.state === 'countdown')) this.pause(); else if (!document.hidden) this.checkUpdate(); });
+    { const bi = $('build-info'); if (bi) bi.textContent = 'Versión ' + BUILD.date; } // la fecha de la versión, en la portada
     this.last = performance.now();
     $('loading').classList.add('hidden');
     this.showScreen('title');
@@ -490,6 +494,25 @@ class Game {
     this.state = 'title';
     this.showScreen('title');
     this.updateTitle();
+    this.checkUpdate();
+  }
+
+  // ¿Hay publicada una versión más nueva que la que está corriendo? Pasa si la pestaña lleva horas
+  // abierta. En la portada o eligiendo camión se recarga sola; en carrera espera a volver a la portada.
+  checkUpdate() {
+    if (location.protocol === 'file:' || !BUILD.id || this.updating) return;
+    const now = Date.now();
+    if (now - (this.updateT || 0) < 60000) return;
+    this.updateT = now;
+    fetch('dist/version.json?t=' + now, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).then((j) => {
+      if (!j || !j.id || !(j.id > BUILD.id)) return;
+      if (this.state !== 'title' && this.state !== 'select') { this.updateT = 0; return; }
+      const u = new URL(location.href);
+      if (u.searchParams.get('v') === j.id) return; // ya se pidió esa versión y sigue llegando la vieja: no insistir
+      this.updating = true;
+      u.searchParams.set('v', j.id);
+      location.replace(u.href);
+    }).catch(() => {});
   }
 
   goSelect(mode = this.settings.mode) {
